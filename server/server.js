@@ -10,10 +10,12 @@ const path     = require('path');
 const fs       = require('fs');
 const axios    = require('axios');
 const cron     = require('node-cron');
+
+// Load server/.env before any module config reads process.env.
+dotenv.config({ path: path.join(__dirname, '.env') });
+
 const { cloudinary } = require('./utils/cloudinary');
 const { runWeeklyUpdate } = require('./cron/updateRates');
-
-dotenv.config();
 
 const authRoutes                 = require('./routes/authRoutes');
 const adminRoutes                = require('./routes/adminRoutes');
@@ -34,7 +36,6 @@ const locationRoutes             = require('./routes/locationRoutes');
 const semanticMatchingRoutes     = require('./routes/semanticMatchingRoutes');
 const chatbotRoutes              = require('./routes/chatbotRoutes');
 const chatbotSupportRoutes       = require('./routes/chatbotSupportRoutes');
-const analyticsRoutes            = require('./routes/analyticsRoutes');
 const { rebuildAllIndexes }      = require('./services/semanticMatchingService');
 const { ensureAdminAccounts }    = require('./utils/adminAccounts');
 const { sweepDirectHirePayments } = require('./controllers/directHireController');
@@ -232,7 +233,6 @@ app.use('/api/community',                communityRoutes);
 app.use('/api/ai',                       aiRoutes);
 app.use('/api/groups',                   groupRoutes);
 app.use('/api/jobs',                     jobRoutes);
-app.use('/api/analytics',                analyticsRoutes);
 app.use('/api/ivr',                      ivrRoutes);
 app.use('/api/location',                 locationRoutes);
 app.use('/api/matching',                 semanticMatchingRoutes);
@@ -261,25 +261,27 @@ app.use((req, res) => res.status(404).json({ message: `Route ${req.method} ${req
 
 // ── Global error handler ──────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
-    console.error('Global error handler:', err.message);
-    if (err.code === 'LIMIT_FILE_SIZE')        return res.status(413).json({ message: 'File too large. Maximum 5 MB.' });
-    if (err.code === 'LIMIT_UNEXPECTED_FILE')  return res.status(400).json({ message: `Unexpected file field: ${err.field}` });
-    if (err.message?.includes('Only image'))   return res.status(400).json({ message: err.message });
-    if (err.message?.includes('Invalid file')) return res.status(400).json({ message: err.message });
-    if (err.message?.includes('CORS'))         return res.status(403).json({ message: err.message });
-    if (err.name === 'ValidationError') {
-        const messages = Object.values(err.errors).map(e => e.message);
+    const error = err || new Error('Unknown error');
+    const errorMessage = error.message || String(error);
+    console.error('Global error handler:', errorMessage);
+    if (error.code === 'LIMIT_FILE_SIZE')        return res.status(413).json({ message: 'File too large. Maximum 5 MB.' });
+    if (error.code === 'LIMIT_UNEXPECTED_FILE')  return res.status(400).json({ message: `Unexpected file field: ${error.field}` });
+    if (errorMessage.includes('Only image'))     return res.status(400).json({ message: errorMessage });
+    if (errorMessage.includes('Invalid file'))   return res.status(400).json({ message: errorMessage });
+    if (errorMessage.includes('CORS'))           return res.status(403).json({ message: errorMessage });
+    if (error.name === 'ValidationError') {
+        const messages = Object.values(error.errors || {}).map(e => e.message);
         return res.status(400).json({ message: messages.join(', ') });
     }
-    if (err.code === 11000) {
-        const field = Object.keys(err.keyValue || {})[0] || 'field';
+    if (error.code === 11000) {
+        const field = Object.keys(error.keyValue || {})[0] || 'field';
         return res.status(409).json({ message: `Duplicate value for ${field}.` });
     }
-    if (err.name === 'JsonWebTokenError')  return res.status(401).json({ message: 'Invalid token.' });
-    if (err.name === 'TokenExpiredError')  return res.status(401).json({ message: 'Token expired. Please log in again.' });
-    return res.status(err.status || 500).json({
+    if (error.name === 'JsonWebTokenError')  return res.status(401).json({ message: 'Invalid token.' });
+    if (error.name === 'TokenExpiredError')  return res.status(401).json({ message: 'Token expired. Please log in again.' });
+    return res.status(error.status || 500).json({
         success: false,
-        message: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
+        message: process.env.NODE_ENV === 'production' ? 'Internal server error' : errorMessage,
     });
 });
 
