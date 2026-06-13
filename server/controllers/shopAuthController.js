@@ -102,8 +102,15 @@ exports.sendEmailOtp = async (req, res) => {
 
         // Send email OTP using optimized OTP send path
         try {
-            await sendOtpEmail(email, otp);
+            const emailResult = await sendOtpEmail(email, otp);
             markOtpCooldown(cooldownKey);
+            if (emailResult?.devFallback) {
+                return res.json({
+                    message: 'Email OTP bypassed in development because Brevo rejected the current IP.',
+                    expiresAt: expiry.toISOString(),
+                    devFallback: true,
+                });
+            }
             return res.json({ 
                 message: 'OTP sent to email.',
                 expiresAt: expiry.toISOString(),
@@ -153,23 +160,10 @@ exports.verifyEmailOtp = async (req, res) => {
             return res.status(400).json({ message: 'Email or mobile and OTP are required.' });
         }
 
-        // Prefer mobile so OTP verification updates the same draft shop used at submit time.
-        // Falling back to email can mark a different record if older duplicates exist.
-        let shop = null;
-        if (mobile) {
-            shop = await Shop.findOne({ mobile }).select('+emailOtp +emailOtpExpiry email mobile');
-        }
-        if (!shop && email) {
-            shop = await Shop.findOne({ email }).select('+emailOtp +emailOtpExpiry email mobile');
-        }
-
+        const query = email ? { email } : { mobile };
+        const shop = await Shop.findOne(query).select('+emailOtp +emailOtpExpiry');
         if (!shop || !shop.emailOtp)
             return res.status(400).json({ message: 'No email OTP found.' });
-
-        if (email && String(shop.email || '').trim().toLowerCase() !== email) {
-            return res.status(400).json({ message: 'Email does not match the mobile verification session.' });
-        }
-
         if (Date.now() > new Date(shop.emailOtpExpiry).getTime())
             return res.status(400).json({ message: 'OTP expired.' });
 
@@ -349,8 +343,8 @@ exports.registerShop = async (req, res) => {
             message: 'Registration submitted. We will contact you within 24 hours.',
         });
     } catch (err) {
-        console.error('registerShop:', err);
-        return res.status(500).json({ message: err.message || 'Registration failed.' });
+        console.error('registerShop:', err?.stack || err);
+        return res.status(500).json({ message: err?.message || 'Registration failed.' });
     }
 };
 
