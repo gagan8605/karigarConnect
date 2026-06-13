@@ -49,15 +49,15 @@ exports.sendMobileOtp = async (req, res) => {
         // (Mongoose 8.x runs validators on upsert inserts even with runValidators:false)
         let shopDoc = await Shop.findOne({ mobile });
         if (shopDoc) {
-            shopDoc.mobileOtp = hashed;
+            shopDoc.mobileOtp       = hashed;
             shopDoc.mobileOtpExpiry = expiry;
-            shopDoc.mobileVerified = false;
+            shopDoc.mobileVerified  = false;
             await shopDoc.save({ validateBeforeSave: false });
         } else {
             const newShop = new Shop({ mobile });
-            newShop.mobileOtp = hashed;
+            newShop.mobileOtp       = hashed;
             newShop.mobileOtpExpiry = expiry;
-            newShop.mobileVerified = false;
+            newShop.mobileVerified  = false;
             await newShop.save({ validateBeforeSave: false });
         }
 
