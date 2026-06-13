@@ -450,7 +450,13 @@ const ShopRegister = () => {
         if (emailOtpCooldownSec > 0) return toast.error(`Please wait ${emailOtpCooldownSec}s before requesting another OTP.`);
         setLoading(true);
         try {
-            await api.shopSendEmailOtp({ email: email.trim(), mobile: mobile.trim() });
+            const res = await api.shopSendEmailOtp({ email: email.trim(), mobile: mobile.trim() });
+            if (res?.data?.devFallback) {
+                setEmailVerified(true);
+                setEmailOtpSent(true);
+                toast.success(res.data.message || 'Email verification bypassed in development.');
+                return;
+            }
             setEmailOtpSent(true);
             setEmailOtpCooldownSec(30);
             toast.success('OTP sent to email!');
@@ -458,6 +464,12 @@ const ShopRegister = () => {
             const retryAfter = Number(e?.response?.data?.retryAfterSeconds || 0);
             const msg = e.response?.data?.message || 'Failed.';
             if (retryAfter > 0) setEmailOtpCooldownSec(retryAfter);
+            if (import.meta.env.DEV && /unrecognised ip address|unrecognized ip address|authorised ip|authorized ip/i.test(msg)) {
+                setEmailVerified(true);
+                setEmailOtpSent(true);
+                toast.success('Email verification bypassed in development because Brevo rejected the current IP.');
+                return;
+            }
             toast.error(msg);
         }
         finally { setLoading(false); }
