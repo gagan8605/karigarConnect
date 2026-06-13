@@ -17,7 +17,6 @@ const signToken = (id) =>
 // Keep that value as-is so updates and fetches resolve to the same Cloudinary URL.
 const resolveMediaPath = (file) => file?.path || file?.secure_url || file?.url || null;
 
-// ── STEP 1: Send Mobile OTP ───────────────────────────────────────────────────
 exports.sendMobileOtp = async (req, res) => {
     try {
         const { mobile } = req.body;
@@ -46,22 +45,43 @@ exports.sendMobileOtp = async (req, res) => {
         const expiry = new Date(Date.now() + 10 * 60 * 1000);
         const hashed = crypto.createHash('sha256').update(otp).digest('hex');
 
-        await Shop.findOneAndUpdate(
-            { mobile },
-            { mobileOtp: hashed, mobileOtpExpiry: expiry, mobileVerified: false },
-            { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: false }
-        );
+        // Use find + save instead of upsert to bypass Mongoose required-field validators
+        // (Mongoose 8.x runs validators on upsert inserts even with runValidators:false)
+        let shopDoc = await Shop.findOne({ mobile });
+        if (shopDoc) {
+            shopDoc.mobileOtp       = hashed;
+            shopDoc.mobileOtpExpiry = expiry;
+            shopDoc.mobileVerified  = false;
+            await shopDoc.save({ validateBeforeSave: false });
+        } else {
+            const newShop = new Shop({ mobile });
+            newShop.mobileOtp       = hashed;
+            newShop.mobileOtpExpiry = expiry;
+            newShop.mobileVerified  = false;
+            await newShop.save({ validateBeforeSave: false });
+        }
 
         const smsResult = await sendOtpSms(mobile, otp);
         if (smsResult?.success === false) {
-            throw new Error(smsResult.reason || 'sms_send_failed');
+            // In production, treat SMS failure as a hard error
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error(smsResult.reason || 'sms_send_failed');
+            }
+            // In development/trial, Twilio may reject unverified numbers — log and continue
+            console.warn(`[sendMobileOtp] SMS not delivered (${smsResult.reason}). OTP saved in DB for dev testing.`);
         }
 
         markOtpCooldown(cooldownKey);
-        return res.json({ message: 'OTP sent to mobile.' });
+        const isDev = process.env.NODE_ENV !== 'production';
+        return res.json({
+            message: smsResult?.success === false && isDev
+                ? 'OTP generated (SMS skipped in dev — Twilio trial limitation). Use DB/logs to get OTP.'
+                : 'OTP sent to mobile.',
+            ...(isDev && smsResult?.success === false ? { devOtp: otp } : {}),
+        });
     } catch (err) {
         console.error('sendMobileOtp:', err);
-        return res.status(500).json({ message: 'Failed to send OTP.' });
+        return res.status(500).json({ message: 'Internal server error.' });
     }
 };
 
