@@ -1,8 +1,8 @@
 // server/controllers/shopAuthController.js
 
-const Shop       = require('../models/shopModel');
-const jwt        = require('jsonwebtoken');
-const crypto     = require('crypto');
+const Shop = require('../models/shopModel');
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const { sendOtpSms } = require('../utils/smsHelper');
 const { sendEmailMessage, sendOtpEmail } = require('../utils/emailHelper');
 const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
@@ -17,19 +17,18 @@ const signToken = (id) =>
 // Keep that value as-is so updates and fetches resolve to the same Cloudinary URL.
 const resolveMediaPath = (file) => file?.path || file?.secure_url || file?.url || null;
 
-// ── STEP 1: Send Mobile OTP ───────────────────────────────────────────────────
 exports.sendMobileOtp = async (req, res) => {
     try {
         const { mobile } = req.body;
         if (!mobile || mobile.length !== 10)
             return res.status(400).json({ message: 'Enter a valid 10-digit mobile number.' });
 
-        // Check if shop is already registered with approved status
+        // Check if shop is already registered or pending
         const existingShop = await Shop.findOne({ mobile });
-        if (existingShop && existingShop.verificationStatus === 'approved') {
-            return res.status(400).json({ 
-                message: 'This mobile number is already registered and approved. Please login instead.',
-                alreadyRegistered: true 
+        if (existingShop && (existingShop.ownerName || existingShop.verificationStatus === 'approved' || existingShop.verificationStatus === 'pending')) {
+            return res.status(409).json({
+                message: 'This mobile number is already registered or submitted for review. Please login instead.',
+                alreadyRegistered: true
             });
         }
 
@@ -42,26 +41,47 @@ exports.sendMobileOtp = async (req, res) => {
             });
         }
 
-        const otp    = Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = new Date(Date.now() + 10 * 60 * 1000);
         const hashed = crypto.createHash('sha256').update(otp).digest('hex');
 
-        await Shop.findOneAndUpdate(
-            { mobile },
-            { mobileOtp: hashed, mobileOtpExpiry: expiry, mobileVerified: false },
-            { upsert: true, new: true, setDefaultsOnInsert: true, runValidators: false }
-        );
+        // Use find + save instead of upsert to bypass Mongoose required-field validators
+        // (Mongoose 8.x runs validators on upsert inserts even with runValidators:false)
+        let shopDoc = await Shop.findOne({ mobile });
+        if (shopDoc) {
+            shopDoc.mobileOtp = hashed;
+            shopDoc.mobileOtpExpiry = expiry;
+            shopDoc.mobileVerified = false;
+            await shopDoc.save({ validateBeforeSave: false });
+        } else {
+            const newShop = new Shop({ mobile });
+            newShop.mobileOtp = hashed;
+            newShop.mobileOtpExpiry = expiry;
+            newShop.mobileVerified = false;
+            await newShop.save({ validateBeforeSave: false });
+        }
 
         const smsResult = await sendOtpSms(mobile, otp);
         if (smsResult?.success === false) {
-            throw new Error(smsResult.reason || 'sms_send_failed');
+            // In production, treat SMS failure as a hard error
+            if (process.env.NODE_ENV === 'production') {
+                throw new Error(smsResult.reason || 'sms_send_failed');
+            }
+            // In development/trial, Twilio may reject unverified numbers — log and continue
+            console.warn(`[sendMobileOtp] SMS not delivered (${smsResult.reason}). OTP saved in DB for dev testing.`);
         }
 
         markOtpCooldown(cooldownKey);
-        return res.json({ message: 'OTP sent to mobile.' });
+        const isDev = process.env.NODE_ENV !== 'production';
+        return res.json({
+            message: smsResult?.success === false && isDev
+                ? 'OTP generated (SMS skipped in dev — Twilio trial limitation). Use DB/logs to get OTP.'
+                : 'OTP sent to mobile.',
+            ...(isDev && smsResult?.success === false ? { devOtp: otp } : {}),
+        });
     } catch (err) {
         console.error('sendMobileOtp:', err);
-        return res.status(500).json({ message: 'Failed to send OTP.' });
+        return res.status(500).json({ message: 'Internal server error.' });
     }
 };
 
@@ -72,6 +92,15 @@ exports.sendEmailOtp = async (req, res) => {
         const mobile = String(req.body?.mobile || '').trim();
         if (!email) return res.status(400).json({ message: 'Email required.' });
 
+        // Check if shop is already registered with this email
+        const existingShopByEmail = await Shop.findOne({ email });
+        if (existingShopByEmail && (existingShopByEmail.ownerName || existingShopByEmail.verificationStatus === 'approved' || existingShopByEmail.verificationStatus === 'pending')) {
+            return res.status(409).json({
+                message: 'This email is already registered or submitted for review. Please login instead.',
+                alreadyRegistered: true
+            });
+        }
+
         // Each identifier (email/mobile) has its own 30-second cooldown
         const cooldownKey = `shop:email-otp:${email}`;
         const cooldown = getOtpCooldownState(cooldownKey);
@@ -81,7 +110,7 @@ exports.sendEmailOtp = async (req, res) => {
                 retryAfterSeconds: Math.ceil(cooldown.remainingMs / 1000),
             });
         }
-        const otp    = Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = new Date(Date.now() + 10 * 60 * 1000);
         const hashed = crypto.createHash('sha256').update(otp).digest('hex');
 
@@ -111,7 +140,7 @@ exports.sendEmailOtp = async (req, res) => {
                     devFallback: true,
                 });
             }
-            return res.json({ 
+            return res.json({
                 message: 'OTP sent to email.',
                 expiresAt: expiry.toISOString(),
             });
@@ -139,8 +168,8 @@ exports.verifyMobileOtp = async (req, res) => {
         if (hashed !== shop.mobileOtp)
             return res.status(400).json({ message: 'Incorrect OTP.' });
 
-        shop.mobileVerified  = true;
-        shop.mobileOtp       = undefined;
+        shop.mobileVerified = true;
+        shop.mobileOtp = undefined;
         shop.mobileOtpExpiry = undefined;
         await shop.save({ validateBeforeSave: false });
         return res.json({ message: 'Mobile verified.' });
@@ -171,8 +200,8 @@ exports.verifyEmailOtp = async (req, res) => {
         if (hashed !== shop.emailOtp)
             return res.status(400).json({ message: 'Incorrect OTP.' });
 
-        shop.emailVerified  = true;
-        shop.emailOtp       = undefined;
+        shop.emailVerified = true;
+        shop.emailOtp = undefined;
         shop.emailOtpExpiry = undefined;
         await shop.save({ validateBeforeSave: false });
         return res.json({ message: 'Email verified.' });
@@ -192,16 +221,16 @@ exports.sendLoginOtp = async (req, res) => {
         // Find existing shop
         const shop = await Shop.findOne({ mobile });
         if (!shop) {
-            return res.status(404).json({ 
+            return res.status(404).json({
                 message: 'This mobile number is not registered. Please register first.',
-                notRegistered: true 
+                notRegistered: true
             });
         }
 
         if (shop.verificationStatus === 'rejected' || shop.verificationStatus === 'blocked') {
-            return res.status(403).json({ 
+            return res.status(403).json({
                 message: `Your shop account is ${shop.verificationStatus}. Contact support.`,
-                accountBlocked: true 
+                accountBlocked: true
             });
         }
 
@@ -215,11 +244,11 @@ exports.sendLoginOtp = async (req, res) => {
         }
 
         // Send OTP for login
-        const otp    = Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = new Date(Date.now() + 10 * 60 * 1000);
         const hashed = crypto.createHash('sha256').update(otp).digest('hex');
 
-        shop.loginOtp       = hashed;
+        shop.loginOtp = hashed;
         shop.loginOtpExpiry = expiry;
         await shop.save({ validateBeforeSave: false });
 
@@ -255,7 +284,7 @@ exports.verifyLoginOtp = async (req, res) => {
             return res.status(400).json({ message: 'Incorrect OTP.' });
 
         // Clear OTP fields
-        shop.loginOtp       = undefined;
+        shop.loginOtp = undefined;
         shop.loginOtpExpiry = undefined;
         await shop.save({ validateBeforeSave: false });
 
@@ -296,9 +325,9 @@ exports.registerShop = async (req, res) => {
         }
 
         const shop = await Shop.findOne({ mobile });
-        if (!shop)             return res.status(400).json({ message: 'Please verify mobile first.' });
+        if (!shop) return res.status(400).json({ message: 'Please verify mobile first.' });
         if (!shop.mobileVerified) return res.status(400).json({ message: 'Mobile not verified.' });
-        if (!shop.emailVerified)  return res.status(400).json({ message: 'Email not verified.' });
+        if (!shop.emailVerified) return res.status(400).json({ message: 'Email not verified.' });
 
         const files = req.files || {};
 
@@ -307,27 +336,27 @@ exports.registerShop = async (req, res) => {
         // normPath converts to:    "uploads/1234-photo.jpg"
         // Express serves at:       GET /uploads/1234-photo.jpg  ✅
         const ownerPhotoPath = resolveMediaPath(files.ownerPhoto?.[0]);
-        const idProofPath    = resolveMediaPath(files.idProof?.[0]);
-        const shopLogoPath   = resolveMediaPath(files.shopLogo?.[0]);
-        const shopPhotoPath  = resolveMediaPath(files.shopPhoto?.[0]);
-        const gstnCertPath   = resolveMediaPath(files.gstnCertificate?.[0]);
+        const idProofPath = resolveMediaPath(files.idProof?.[0]);
+        const shopLogoPath = resolveMediaPath(files.shopLogo?.[0]);
+        const shopPhotoPath = resolveMediaPath(files.shopPhoto?.[0]);
+        const gstnCertPath = resolveMediaPath(files.gstnCertificate?.[0]);
 
-        shop.ownerName  = ownerName;
-        shop.email      = email;
-        shop.password   = password;
-        shop.shopName   = shopName;
-        shop.shopLogo   = shopLogoPath;
-        shop.shopPhoto  = shopPhotoPath;
-        shop.gstNumber  = gstNumber || null;
+        shop.ownerName = ownerName;
+        shop.email = email;
+        shop.password = password;
+        shop.shopName = shopName;
+        shop.shopLogo = shopLogoPath;
+        shop.shopPhoto = shopPhotoPath;
+        shop.gstNumber = gstNumber || null;
         shop.gstnCertificate = gstnCertPath;
-        shop.category   = category;
-        shop.address    = address;
-        shop.city       = city;
-        shop.pincode    = pincode || '';
-        shop.locality   = locality || '';
+        shop.category = category;
+        shop.address = address;
+        shop.city = city;
+        shop.pincode = pincode || '';
+        shop.locality = locality || '';
         shop.ownerPhoto = ownerPhotoPath;
-        shop.idProof    = { idType: idType || 'Aadhar Card', filePath: idProofPath };
-        
+        shop.idProof = { idType: idType || 'Aadhar Card', filePath: idProofPath };
+
         // Store location if provided
         if (latitude && longitude) {
             shop.shopLocation = {
@@ -335,7 +364,7 @@ exports.registerShop = async (req, res) => {
                 longitude: parseFloat(longitude),
             };
         }
-        
+
         shop.verificationStatus = 'pending';
 
         await shop.save();
@@ -364,16 +393,16 @@ exports.loginShop = async (req, res) => {
                 message: shop.verificationStatus === 'pending'
                     ? 'Your shop is under review. Admin will contact you within 24 hours.'
                     : shop.verificationStatus === 'blocked'
-                    ? 'Your shop account has been blocked. Contact support.'
-                    : 'Shop not approved.',
+                        ? 'Your shop account has been blocked. Contact support.'
+                        : 'Shop not approved.',
             });
 
-        const bcrypt  = require('bcryptjs');
+        const bcrypt = require('bcryptjs');
         const isMatch = await bcrypt.compare(password, shop.password);
         if (!isMatch)
             return res.status(401).json({ message: 'Invalid credentials.' });
 
-        const token    = signToken(shop._id);
+        const token = signToken(shop._id);
         const shopData = shop.toObject();
         delete shopData.password;
 

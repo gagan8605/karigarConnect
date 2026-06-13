@@ -4,19 +4,23 @@ const bcrypt = require('bcryptjs');
 
 const shopSchema = new mongoose.Schema({
     // Owner Info
-    ownerName:   { type: String, required: true, trim: true },
+    // NOTE: ownerName, email, password, shopName, etc. are NOT required at schema level
+    // because partial documents are created during the OTP verification phase.
+    // Required validation is enforced in the controller at final registration time.
+    ownerName:   { type: String, trim: true },
     ownerPhoto:  { type: String },
     mobile:      { type: String, required: true, unique: true },
-    email:       { type: String, required: true, unique: true, trim: true, lowercase: true },
-    password:    { type: String, required: true, select: false },
+    // sparse:true allows multiple documents with email=null (e.g. during OTP phase)
+    email:       { type: String, unique: true, sparse: true, trim: true, lowercase: true },
+    password:    { type: String, select: false },
 
     // Shop Info
-    shopName:    { type: String, required: true, trim: true },
+    shopName:    { type: String, trim: true },
     shopLogo:    { type: String },
     shopPhoto:   { type: String },                    // Live shop photo during registration
     gstNumber:   { type: String, trim: true, default: null },
     gstnCertificate: { type: String },                // GSTN certificate document
-    category:    { type: String, required: true },   // from dropdown or manual
+    category:    { type: String },   // from dropdown or manual
 
     // Live Location (captured during shop registration)
     shopLocation: {
@@ -26,8 +30,8 @@ const shopSchema = new mongoose.Schema({
     },
 
     // Address
-    address:     { type: String, required: true },
-    city:        { type: String, required: true },
+    address:     { type: String },
+    city:        { type: String },
     pincode:     { type: String },
     locality:    { type: String },
 

@@ -8,6 +8,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
 import FaceVerification, { dataURLtoBlob } from './FaceVerification';
+import LocationMapPicker from '../../components/LocationMapPicker';
 import {
     Eye,
     EyeOff,
@@ -179,63 +180,18 @@ const ClientRegister = () => {
         }
     };
 
-    const captureLocation = async () => {
-        setLocationError('');
-        if (!navigator.geolocation) {
-            const msg = 'Geolocation is not supported by your browser.';
-            setLocationError(msg);
-            toast.error(msg);
-            return;
-        }
-
-        navigator.geolocation.getCurrentPosition(
-            async (position) => {
-                const { latitude, longitude } = position.coords;
-                setFormData((prev) => ({
-                    ...prev,
-                    latitude: latitude.toFixed(6),
-                    longitude: longitude.toFixed(6),
-                }));
-
-                try {
-                    const response = await fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-                    );
-                    const data = await response.json();
-                    const addr = data?.address || {};
-
-                    const houseNum = addr.house_number || '';
-                    const roadName = addr.road || addr.street || '';
-                    const fullAddress = [houseNum, roadName].filter(Boolean).join(', ');
-                    const districtName = addr.county || addr.city || addr.town || addr.state_district || '';
-                    const villageName = addr.village || addr.hamlet || addr.suburb || '';
-                    const pincode = addr.postcode || '';
-
-                    setFormData((prev) => ({
-                        ...prev,
-                        fullAddress: fullAddress || prev.fullAddress,
-                        city: districtName || prev.city,
-                        village: villageName || prev.village,
-                        locality: villageName || prev.locality,
-                        homeLocation: fullAddress || villageName || prev.homeLocation,
-                        pincode: pincode || prev.pincode,
-                    }));
-
-                    toast.success('Live location captured and address auto-filled.');
-                } catch {
-                    toast.success('Live location captured. Fill remaining fields manually.');
-                }
-            },
-            (error) => {
-                let msg = 'Unable to capture live location.';
-                if (error.code === error.PERMISSION_DENIED) msg = 'Location permission denied. Enable location access.';
-                else if (error.code === error.POSITION_UNAVAILABLE) msg = 'Location information unavailable.';
-                else if (error.code === error.TIMEOUT) msg = 'Location request timed out. Please try again.';
-                setLocationError(msg);
-                toast.error(msg);
-            },
-            { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-        );
+    const handleMapLocationSelected = (locationInfo) => {
+        setFormData((prev) => ({
+            ...prev,
+            latitude: locationInfo.latitude,
+            longitude: locationInfo.longitude,
+            fullAddress: locationInfo.fullAddress || prev.fullAddress,
+            city: locationInfo.city || prev.city,
+            village: locationInfo.village || prev.village,
+            locality: locationInfo.locality || prev.locality,
+            homeLocation: locationInfo.fullAddress || locationInfo.village || prev.homeLocation,
+            pincode: locationInfo.pincode || prev.pincode,
+        }));
     };
 
     // OTP handlers (unchanged)
@@ -244,16 +200,21 @@ const ClientRegister = () => {
         if (mobileOtpCooldownSec > 0) return toast.error(`Please wait ${mobileOtpCooldownSec}s before requesting another OTP.`);
         const id = toast.loading('Sending Mobile OTP…');
         try {
-            await api.sendOtp({ mobile: formData.mobile });
+            await api.sendOtp({ mobile: formData.mobile, type: 'client' });
             setMobileOtpSent(true);
             setMobileOtpCooldownSec(60);
             toast.success('OTP sent!', { id });
         }
         catch (err) {
-            const retryAfter = Number(err?.response?.data?.retryAfterSeconds || 0);
-            const message = err?.response?.data?.message || 'Failed to send mobile OTP';
+            const data = err.response?.data;
+            const retryAfter = Number(data?.retryAfterSeconds || 0);
+            const message = data?.message || 'Failed to send mobile OTP';
             if (retryAfter > 0) setMobileOtpCooldownSec(retryAfter);
-            toast.error(message, { id });
+            if (data?.alreadyRegistered) {
+                toast.error(message, { id, duration: 5000 });
+            } else {
+                toast.error(message, { id });
+            }
         }
     };
     const handleVerifyMobileOtp = async () => {
@@ -267,16 +228,21 @@ const ClientRegister = () => {
         if (emailOtpCooldownSec > 0) return toast.error(`Please wait ${emailOtpCooldownSec}s before requesting another OTP.`);
         const id = toast.loading('Sending Email OTP…');
         try {
-            await api.sendOtp({ email: formData.email });
+            await api.sendOtp({ email: formData.email, type: 'client' });
             setEmailOtpSent(true);
             setEmailOtpCooldownSec(60);
             toast.success('OTP sent to email!', { id });
         }
         catch (err) {
-            const retryAfter = Number(err?.response?.data?.retryAfterSeconds || 0);
-            const message = err?.response?.data?.message || 'Failed to send email OTP';
+            const data = err.response?.data;
+            const retryAfter = Number(data?.retryAfterSeconds || 0);
+            const message = data?.message || 'Failed to send email OTP';
             if (retryAfter > 0) setEmailOtpCooldownSec(retryAfter);
-            toast.error(message, { id });
+            if (data?.alreadyRegistered) {
+                toast.error(message, { id, duration: 5000 });
+            } else {
+                toast.error(message, { id });
+            }
         }
     };
     const handleVerifyEmailOtp = async () => {
@@ -735,25 +701,56 @@ const ClientRegister = () => {
                                     <h2 className="text-3xl font-bold text-orange-800 flex items-center justify-center"><MapPin className="h-8 w-8 mr-3" />Address Details</h2>
                                 </div>
 
-                                <div className="border-2 border-orange-200 p-5 rounded-xl bg-orange-50">
-                                    <button
-                                        type="button"
-                                        onClick={captureLocation}
-                                        className="mb-4 px-5 py-3 bg-orange-100 text-orange-700 font-semibold rounded-xl hover:bg-orange-200 border border-orange-300"
-                                    >
-                                        Use Live Location
-                                    </button>
-                                    {locationError && <p className="text-sm text-red-600 mb-3">{locationError}</p>}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                        <input name="fullAddress" value={formData.fullAddress} placeholder="Full Address" onChange={handleChange} className="md:col-span-2 px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
-                                        <input name="homeLocation" value={formData.homeLocation} placeholder="Home Location / Area" onChange={handleChange} className="px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
-                                        <input name="houseNumber" value={formData.houseNumber} placeholder="House No. (Optional)" onChange={handleChange} className="px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
-                                        <input name="city" value={formData.city} placeholder="District" onChange={handleChange} className="px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
-                                        <input name="village" value={formData.village} placeholder="Village" onChange={handleChange} className="px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
-                                        <input name="locality" value={formData.locality} placeholder="Locality (optional)" onChange={handleChange} className="px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
-                                        <input name="pincode" value={formData.pincode} placeholder="Pincode" onChange={handleChange} className="px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
-                                        <input name="latitude" value={formData.latitude} placeholder="Latitude" onChange={handleChange} className="px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
-                                        <input name="longitude" value={formData.longitude} placeholder="Longitude" onChange={handleChange} className="px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
+                                <div className="space-y-4">
+                                    <div className="bg-white border-2 border-orange-200 p-4 rounded-2xl shadow-sm">
+                                        <label className="block text-sm font-semibold text-orange-800 mb-2">Select Location on Map</label>
+                                        <LocationMapPicker
+                                            onLocationSelected={handleMapLocationSelected}
+                                            initialLat={formData.latitude}
+                                            initialLng={formData.longitude}
+                                        />
+                                    </div>
+
+                                    <div className="border-2 border-orange-200 p-5 rounded-xl bg-orange-50">
+                                        {locationError && <p className="text-sm text-red-600 mb-3">{locationError}</p>}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                            <div className="md:col-span-2">
+                                                <label className="block text-xs font-semibold text-orange-700 mb-1">Full Address</label>
+                                                <input name="fullAddress" value={formData.fullAddress} placeholder="Full Address" onChange={handleChange} className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-orange-700 mb-1">Home Location / Area</label>
+                                                <input name="homeLocation" value={formData.homeLocation} placeholder="Home Location / Area" onChange={handleChange} className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-orange-700 mb-1">House No. (Optional)</label>
+                                                <input name="houseNumber" value={formData.houseNumber} placeholder="House No. (Optional)" onChange={handleChange} className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-orange-700 mb-1">District / City</label>
+                                                <input name="city" value={formData.city} placeholder="District" onChange={handleChange} className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-orange-700 mb-1">Village</label>
+                                                <input name="village" value={formData.village} placeholder="Village" onChange={handleChange} className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-orange-700 mb-1">Locality (optional)</label>
+                                                <input name="locality" value={formData.locality} placeholder="Locality (optional)" onChange={handleChange} className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-orange-700 mb-1">Pincode</label>
+                                                <input name="pincode" value={formData.pincode} placeholder="Pincode" onChange={handleChange} className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-orange-700 mb-1">Latitude</label>
+                                                <input name="latitude" value={formData.latitude} placeholder="Latitude" onChange={handleChange} readOnly className="w-full px-4 py-3 bg-orange-100 border border-orange-300 rounded-lg text-gray-600 focus:ring-2 focus:ring-orange-500" />
+                                            </div>
+                                            <div>
+                                                <label className="block text-xs font-semibold text-orange-700 mb-1">Longitude</label>
+                                                <input name="longitude" value={formData.longitude} placeholder="Longitude" onChange={handleChange} readOnly className="w-full px-4 py-3 bg-orange-100 border border-orange-300 rounded-lg text-gray-600 focus:ring-2 focus:ring-orange-500" />
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
 

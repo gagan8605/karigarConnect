@@ -7,6 +7,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
 import Header from '../../components/Header';
+import LocationMapPicker from '../../components/LocationMapPicker';
 import { PASSWORD_POLICY_TEXT, isStrongPassword, getPasswordStrength, getPasswordChecks } from '../../constants/passwordPolicy';
 import {
     Store, User, Phone, Mail, Lock, MapPin, FileText,
@@ -341,64 +342,13 @@ const ShopRegister = () => {
     const passwordStrength = getPasswordStrength(password);
     const passwordChecks = getPasswordChecks(password);
 
-    const captureLocation = useCallback(async () => {
-        setLocationError('');
-        if (!navigator.geolocation) {
-            setLocationError('Geolocation not supported by your browser');
-            return;
-        }
-        
-        try {
-            navigator.geolocation.getCurrentPosition(
-                async (position) => {
-                    const { latitude: lat, longitude: lon } = position.coords;
-                    setLatitude(lat);
-                    setLongitude(lon);
-                    toast.success(`Location captured: ${lat.toFixed(5)}, ${lon.toFixed(5)}`);
-                    
-                    // Reverse geocoding to get address details
-                    try {
-                        const response = await fetch(
-                            `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`
-                        );
-                        const data = await response.json();
-                        
-                        if (data.address) {
-                            // Extract address components
-                            const roadName = data.address.road || data.address.street || '';
-                            const houseNum = data.address.house_number || '';
-                            const village = data.address.village || data.address.hamlet || '';
-                            const city = data.address.city || data.address.town || data.address.county || '';
-                            const postcode = data.address.postcode || '';
-                            
-                            // Build full address
-                            const fullAddress = [houseNum, roadName].filter(Boolean).join(', ');
-                            
-                            // Auto-fill the address fields
-                            if (fullAddress) setAddress(fullAddress);
-                            if (city) setCity(city);
-                            if (village) setLocality(village);
-                            if (postcode) setPincode(postcode);
-                            
-                            toast.success('Address details auto-filled from location!');
-                        }
-                    } catch (geoErr) {
-                        console.log('Geocoding failed, but location captured:', geoErr);
-                    }
-                },
-                error => {
-                    let msg = 'Unable to get location';
-                    if (error.code === error.PERMISSION_DENIED) msg = 'Permission denied. Enable location in browser settings.';
-                    else if (error.code === error.POSITION_UNAVAILABLE) msg = 'Location information unavailable';
-                    setLocationError(msg);
-                    toast.error(msg);
-                },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-            );
-        } catch (err) {
-            setLocationError('Error capturing location');
-            toast.error('Error capturing location');
-        }
+    const handleMapLocationSelected = useCallback((locationInfo) => {
+        setLatitude(parseFloat(locationInfo.latitude));
+        setLongitude(parseFloat(locationInfo.longitude));
+        if (locationInfo.fullAddress) setAddress(locationInfo.fullAddress);
+        if (locationInfo.city) setCity(locationInfo.city);
+        if (locationInfo.village) setLocality(locationInfo.village);
+        if (locationInfo.pincode) setPincode(locationInfo.pincode);
     }, []);
 
     const togglePwd = useCallback(() => setShowPwd(v => !v), []);
@@ -423,12 +373,13 @@ const ShopRegister = () => {
             setMobileOtpCooldownSec(30);
             toast.success('OTP sent to mobile!');
         } catch (e) {
-            const retryAfter = Number(e?.response?.data?.retryAfterSeconds || 0);
-            const msg = e.response?.data?.message || 'Failed.';
-            if (retryAfter > 0) setMobileOtpCooldownSec(retryAfter);
-            if (e.response?.data?.alreadyRegistered) {
-                toast.error(msg);
+            const data = e?.response?.data;
+            const retryAfter = Number(data?.retryAfterSeconds || 0);
+            const msg = data?.message || 'Failed.';
+            if (data?.alreadyRegistered) {
+                toast.error(msg, { duration: 5000 }); // longer so user can read & go to login
             } else {
+                if (retryAfter > 0) setMobileOtpCooldownSec(retryAfter);
                 toast.error(msg);
             }
         }
@@ -461,8 +412,13 @@ const ShopRegister = () => {
             setEmailOtpCooldownSec(30);
             toast.success('OTP sent to email!');
         } catch (e) {
-            const retryAfter = Number(e?.response?.data?.retryAfterSeconds || 0);
-            const msg = e.response?.data?.message || 'Failed.';
+            const data = e?.response?.data;
+            const retryAfter = Number(data?.retryAfterSeconds || 0);
+            const msg = data?.message || 'Failed.';
+            if (data?.alreadyRegistered) {
+                toast.error(msg, { duration: 5000 });
+                return;
+            }
             if (retryAfter > 0) setEmailOtpCooldownSec(retryAfter);
             if (import.meta.env.DEV && /unrecognised ip address|unrecognized ip address|authorised ip|authorized ip/i.test(msg)) {
                 setEmailVerified(true);
@@ -749,20 +705,23 @@ const ShopRegister = () => {
                                     </Field>
                                 </div>
 
-                                <button type="button" onClick={captureLocation}
-                                    className="w-full border-2 border-blue-400 text-blue-600 py-2.5 rounded-lg font-semibold flex items-center justify-center gap-2 hover:bg-blue-50 transition-all">
-                                    {latitude && longitude ? (
-                                        <>
-                                            <span className="text-green-600">✓</span>
-                                            Location Captured: {latitude.toFixed(5)}, {longitude.toFixed(5)}
-                                        </>
-                                    ) : (
-                                        <>
-                                            <MapPin size={16} />
-                                            Capture Shop Location
-                                        </>
-                                    )}
-                                </button>
+                                <div className="bg-white border-2 border-orange-200 p-4 rounded-2xl shadow-sm">
+                                    <label className="block text-sm font-semibold text-orange-800 mb-2">Select Shop Location on Map</label>
+                                    <LocationMapPicker
+                                        onLocationSelected={handleMapLocationSelected}
+                                        initialLat={latitude}
+                                        initialLng={longitude}
+                                    />
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-4">
+                                    <Field label="Latitude" required>
+                                        <Input placeholder="Latitude" value={latitude || ''} readOnly className="bg-gray-100 text-gray-500 cursor-not-allowed" />
+                                    </Field>
+                                    <Field label="Longitude" required>
+                                        <Input placeholder="Longitude" value={longitude || ''} readOnly className="bg-gray-100 text-gray-500 cursor-not-allowed" />
+                                    </Field>
+                                </div>
 
                                 {locationError && (
                                     <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-sm text-red-700">

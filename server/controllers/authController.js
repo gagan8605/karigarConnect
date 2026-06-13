@@ -4,10 +4,10 @@
 // If the face service is unreachable, registration proceeds gracefully with a
 // faceVerificationStatus of 'skipped' and a server warning log.
 
-const bcrypt   = require('bcryptjs');
-const jwt      = require('jsonwebtoken');
-const crypto   = require('crypto');
-const User     = require('../models/userModel');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
+const User = require('../models/userModel');
 const faceClient = require('../utils/faceServiceClient');
 const { sendOtpSms } = require('../utils/smsHelper');
 const { sendOtpEmail } = require('../utils/emailHelper');
@@ -99,9 +99,19 @@ const safeGet = (files, field) => files?.[field]?.[0] ?? null;
 // ── OTP ───────────────────────────────────────────────────────────────────────
 exports.sendOtp = async (req, res) => {
     try {
-        const { mobile, email } = req.body;
+        const { mobile, email, type } = req.body;
         const identifier = mobile || email;
         if (!identifier) return res.status(400).json({ message: 'Mobile or email required.' });
+
+        // Check if user is already registered
+        const query = mobile ? { mobile } : { email };
+        const existingUser = await User.findOne(query).select('role').lean();
+        if (existingUser) {
+            return res.status(409).json({
+                message: `This ${mobile ? 'mobile number' : 'email'} is already registered as a ${existingUser.role}. Please login instead.`,
+                alreadyRegistered: true
+            });
+        }
 
         // Each identifier (mobile/email) has its own 30-second cooldown
         const cooldownKey = `auth:send-otp:${String(identifier).trim().toLowerCase()}`;
@@ -113,7 +123,7 @@ exports.sendOtp = async (req, res) => {
             });
         }
 
-        const otp    = Math.floor(100000 + Math.random() * 900000).toString();
+        const otp = Math.floor(100000 + Math.random() * 900000).toString();
         const expiry = Date.now() + OTP_TTL_MS;
         otpStore.set(identifier, { otp, expiry });
         otpAttemptStore.delete(identifier);
@@ -148,7 +158,7 @@ exports.sendOtp = async (req, res) => {
         if (!smsDelivered && !emailDelivered) {
             otpStore.delete(identifier);
             console.error(`[OTP] Both channels failed. SMS: ${smsError}, Email: ${emailError}`);
-            return res.status(500).json({ 
+            return res.status(500).json({
                 message: 'Failed to send OTP via SMS and Email. Please try again.',
                 debug: { smsError, emailError }
             });
@@ -157,7 +167,7 @@ exports.sendOtp = async (req, res) => {
         // Mark cooldown for this specific identifier
         markOtpCooldown(cooldownKey);
 
-        return res.json({ 
+        return res.json({
             message: 'OTP sent successfully.',
             channels: { sms: smsDelivered, email: emailDelivered },
             expiresAt: new Date(expiry).toISOString(),
@@ -179,8 +189,8 @@ exports.verifyOtp = async (req, res) => {
         }
 
         const record = otpStore.get(identifier);
-        if (!record)                     return res.status(400).json({ message: 'OTP not sent or expired.' });
-        if (Date.now() > record.expiry)  return res.status(400).json({ message: 'OTP expired. Please request a new one.' });
+        if (!record) return res.status(400).json({ message: 'OTP not sent or expired.' });
+        if (Date.now() > record.expiry) return res.status(400).json({ message: 'OTP expired. Please request a new one.' });
         if (record.otp !== otp.trim()) {
             const attempts = attemptState.attempts + 1;
             const lockedUntil = attempts >= OTP_MAX_VERIFY_ATTEMPTS ? Date.now() + OTP_TTL_MS : 0;
@@ -334,9 +344,9 @@ exports.registerWorker = async (req, res) => {
         } = req.body;
 
         // ── Basic validation ──────────────────────────────────────────────────
-        if (!name?.trim())    return res.status(400).json({ message: 'Full name is required.' });
-        if (!mobile)          return res.status(400).json({ message: 'Mobile number is required.' });
-        if (!password)        return res.status(400).json({ message: 'Password is required.' });
+        if (!name?.trim()) return res.status(400).json({ message: 'Full name is required.' });
+        if (!mobile) return res.status(400).json({ message: 'Mobile number is required.' });
+        if (!password) return res.status(400).json({ message: 'Password is required.' });
         if (password !== confirmPassword)
             return res.status(400).json({ message: 'Passwords do not match.' });
         if (!validateStrongPassword(password).isValid)
@@ -364,12 +374,12 @@ exports.registerWorker = async (req, res) => {
             return res.status(409).json({ message: 'Email is already registered.' });
 
         // ── Uploaded file URLs (Cloudinary via multer) ────────────────────────
-        const photoFile     = safeGet(req.files, 'photo');
-        const idProofFile   = safeGet(req.files, 'idProof');
-        const eShramFile    = safeGet(req.files, 'eShramCard');
+        const photoFile = safeGet(req.files, 'photo');
+        const idProofFile = safeGet(req.files, 'idProof');
+        const eShramFile = safeGet(req.files, 'eShramCard');
         const livePhotoFile = safeGet(req.files, 'livePhoto');  // face capture
 
-        if (!photoFile)   return res.status(400).json({ message: 'Profile photo is required.' });
+        if (!photoFile) return res.status(400).json({ message: 'Profile photo is required.' });
         if (!idProofFile) return res.status(400).json({ message: 'ID proof is required.' });
 
         const resolvedIdType = idDocumentType || 'Aadhar Card';
@@ -385,7 +395,7 @@ exports.registerWorker = async (req, res) => {
         }
 
         const skillCerts = req.files?.skillCertificates?.map(f => f.path) || [];
-        const portfolio  = req.files?.portfolioPhotos?.map(f => f.path)   || [];
+        const portfolio = req.files?.portfolioPhotos?.map(f => f.path) || [];
 
         if (skillCerts.length > 3) {
             return res.status(400).json({ message: 'Maximum 3 skill certificates are allowed during registration.' });
@@ -395,7 +405,7 @@ exports.registerWorker = async (req, res) => {
         }
 
         let parsedSkills = [];
-        try { parsedSkills = JSON.parse(skills || '[]'); } catch {}
+        try { parsedSkills = JSON.parse(skills || '[]'); } catch { }
         const normalizedSkills = normalizeWorkerSkillSelections(parsedSkills, primarySkill);
 
         if (normalizedSkills.length === 0) {
@@ -406,19 +416,19 @@ exports.registerWorker = async (req, res) => {
         }
 
         let parsedRefs = [];
-        try { parsedRefs = JSON.parse(references || '[]'); } catch {}
+        try { parsedRefs = JSON.parse(references || '[]'); } catch { }
 
         let parsedPreferredCategories = [];
-        try { parsedPreferredCategories = JSON.parse(preferredJobCategories || '[]'); } catch {}
+        try { parsedPreferredCategories = JSON.parse(preferredJobCategories || '[]'); } catch { }
 
         const normalizedTravelMethod = normalizeTravelMethod(travelMethod);
 
         // ── Create user ───────────────────────────────────────────────────────
-        const user   = await User.create({
+        const user = await User.create({
             userId: generateUserId(),
             role: 'worker', name: name.trim(), dob, age: computedAge, mobile, phoneType,
             email: email || null, password,
-            address:   {
+            address: {
                 city,
                 pincode,
                 locality,
@@ -427,14 +437,14 @@ exports.registerWorker = async (req, res) => {
                 latitude: Number.isFinite(Number(latitude)) ? Number(latitude) : undefined,
                 longitude: Number.isFinite(Number(longitude)) ? Number(longitude) : undefined,
             },
-            idProof:   {
+            idProof: {
                 idType: resolvedIdType,
                 filePath: idProofFile.path,
                 numberHash: idHash,
                 numberLast4: idValidation.normalized.slice(-4),
             },
-            photo:     photoFile.path,
-            gender,    eShramNumber,
+            photo: photoFile.path,
+            gender, eShramNumber,
             eShramCardPath: eShramFile?.path || null,
             experience: Number(experience) || 0,
             expectedMinPay: Number(expectedMinPay) || 0,
@@ -493,7 +503,7 @@ const runWorkerFaceVerification = async (user, idProofUrl, livePhotoUrl) => {
 
         // Extract embeddings
         const [idResult, liveResult] = await Promise.all([
-            faceClient.extractEmbedding(idBuffer,   'id_card.jpg'),
+            faceClient.extractEmbedding(idBuffer, 'id_card.jpg'),
             faceClient.extractEmbedding(liveBuffer, 'live_face.jpg'),
         ]);
 
@@ -522,12 +532,12 @@ const runWorkerFaceVerification = async (user, idProofUrl, livePhotoUrl) => {
         const passed = comparison.similarity >= faceClient.WORKER_THRESHOLD;
 
         await User.findByIdAndUpdate(user._id, {
-            faceEmbedding:          liveResult.embedding,
-            idFaceEmbedding:        idResult.embedding,
-            liveFacePhoto:          livePhotoUrl,
-            faceVerificationScore:  comparison.similarity,
-            faceVerified:           passed,
-            faceVerifiedAt:         new Date(),
+            faceEmbedding: liveResult.embedding,
+            idFaceEmbedding: idResult.embedding,
+            liveFacePhoto: livePhotoUrl,
+            faceVerificationScore: comparison.similarity,
+            faceVerified: passed,
+            faceVerifiedAt: new Date(),
             faceVerificationStatus: passed ? 'passed' : 'failed',
         });
 
@@ -559,10 +569,10 @@ exports.registerClient = async (req, res) => {
         } = req.body;
 
         // ── Validation ────────────────────────────────────────────────────────
-        if (!name?.trim())  return res.status(400).json({ message: 'Name is required.' });
-        if (!mobile)        return res.status(400).json({ message: 'Mobile is required.' });
-        if (!email)         return res.status(400).json({ message: 'Email is required.' });
-        if (!password)      return res.status(400).json({ message: 'Password is required.' });
+        if (!name?.trim()) return res.status(400).json({ message: 'Name is required.' });
+        if (!mobile) return res.status(400).json({ message: 'Mobile is required.' });
+        if (!email) return res.status(400).json({ message: 'Email is required.' });
+        if (!password) return res.status(400).json({ message: 'Password is required.' });
         if (password !== confirmPassword)
             return res.status(400).json({ message: 'Passwords do not match.' });
         if (!validateStrongPassword(password).isValid)
@@ -627,8 +637,8 @@ exports.registerClient = async (req, res) => {
             return res.status(409).json({ message: 'Email is already registered.' });
 
         // ── File URLs & Device Fingerprinting ─────────────────────────────────
-        const photoFile     = safeGet(req.files, 'photo');
-        const idProofFile   = safeGet(req.files, 'idProof');
+        const photoFile = safeGet(req.files, 'photo');
+        const idProofFile = safeGet(req.files, 'idProof');
         const proofOfResidenceFile = safeGet(req.files, 'proofOfResidence');
         const secondaryIdFile = safeGet(req.files, 'secondaryIdProof');
         const certificationFile = safeGet(req.files, 'professionalCertification');
@@ -658,12 +668,12 @@ exports.registerClient = async (req, res) => {
             });
         }
 
-        let faceEmbedding        = null;
-        let idFaceEmbedding      = null;
+        let faceEmbedding = null;
+        let idFaceEmbedding = null;
         let faceVerificationScore = null;
-        let faceVerified         = false;
+        let faceVerified = false;
         let faceVerificationStatus = 'skipped';
-        let liveFacePhoto        = livePhotoFile?.path || null;
+        let liveFacePhoto = livePhotoFile?.path || null;
 
         if (faceServiceUp) {
             const [idBuffer, liveBuffer] = await Promise.all([
@@ -723,10 +733,10 @@ exports.registerClient = async (req, res) => {
                 }
             }
 
-            faceEmbedding          = liveResult.embedding;
-            idFaceEmbedding        = idResult.embedding;
-            faceVerificationScore  = similarity;
-            faceVerified           = true;
+            faceEmbedding = liveResult.embedding;
+            idFaceEmbedding = idResult.embedding;
+            faceVerificationScore = similarity;
+            faceVerified = true;
             faceVerificationStatus = 'passed';
             console.log(`[FaceVerification] Client verified — similarity=${similarity.toFixed(3)} ✅ no duplicate found`);
         }
@@ -743,7 +753,7 @@ exports.registerClient = async (req, res) => {
                 retryAfterSeconds: Math.ceil(addressCooldown.remainingMs / 1000),
             });
         }
-        
+
         try {
             const result = await sendAddressVerificationOtp(mobile, addressOtp, addressDisplay);
             if (result?.success === false) {
@@ -757,15 +767,15 @@ exports.registerClient = async (req, res) => {
         }
 
         // ── Create client ─────────────────────────────────────────────────────
-        const user   = await User.create({
+        const user = await User.create({
             userId: generateUserId(),
             role: 'client', name: name.trim(), mobile, email,
             age: ageFromDob,
             dob: dobDate,
             gender,
             password,
-            photo:     photoFile?.path || null,
-            address:   {
+            photo: photoFile?.path || null,
+            address: {
                 city,
                 pincode,
                 locality,
@@ -776,8 +786,8 @@ exports.registerClient = async (req, res) => {
                 latitude: Number.isFinite(Number(latitude)) ? Number(latitude) : undefined,
                 longitude: Number.isFinite(Number(longitude)) ? Number(longitude) : undefined,
             },
-            idProof:   { idType: idType || 'Aadhar', filePath: idProofFile?.path || null },
-            
+            idProof: { idType: idType || 'Aadhar', filePath: idProofFile?.path || null },
+
             // NEW high priority security fields
             ageVerified: ageFromDob >= 18,
             emergencyContact: {
@@ -788,7 +798,7 @@ exports.registerClient = async (req, res) => {
             secondaryIdProof: secondaryIdFile?.path || null,
             addressVerificationOtp: addressOtp,
             addressVerificationOtpExpiry: new Date(Date.now() + 10 * 60 * 1000), // 10 min
-            
+
             // NEW medium priority fields
             profession: profession?.trim() || '',
             signupReason: signupReason || '',
@@ -800,18 +810,18 @@ exports.registerClient = async (req, res) => {
             insuranceDetails: insuranceDetails?.trim() || '',
             securityQuestion: securityQuestion?.trim() || '',
             securityAnswer: securityAnswer?.trim() || '',
-            
+
             // Device & IP tracking
             deviceFingerprint,
             signupIpAddress: clientIp,
             signupUserAgent: userAgent,
-            
+
             // T&C acceptance
             termsPaymentAccepted: acceptedTerms,
             termsDisputePolicyAccepted: acceptedTerms,
             termsDataPrivacyAccepted: acceptedPrivacy,
             termsWorkerProtectionAccepted: acceptedTerms,
-            
+
             // Legacy fields
             workplaceInfo, socialProfile,
             verificationStatus: 'approved',  // clients auto-approved
@@ -848,7 +858,7 @@ exports.registerClient = async (req, res) => {
 exports.verifyAddressOtp = async (req, res) => {
     try {
         const { clientId, otp } = req.body;
-        
+
         if (!clientId || !otp) {
             return res.status(400).json({ message: 'Client ID and OTP are required.' });
         }
@@ -1039,8 +1049,8 @@ exports.forgotPassword = async (req, res) => {
         const user = await User.findOne(mobile ? { mobile } : { email });
         if (!user) return res.status(404).json({ message: 'No account found.' });
 
-        const token  = crypto.randomBytes(32).toString('hex');
-        user.resetPasswordToken  = crypto.createHash('sha256').update(token).digest('hex');
+        const token = crypto.randomBytes(32).toString('hex');
+        user.resetPasswordToken = crypto.createHash('sha256').update(token).digest('hex');
         user.resetPasswordExpire = new Date(Date.now() + 30 * 60 * 1000);
         await user.save({ validateBeforeSave: false });
 
@@ -1053,16 +1063,16 @@ exports.forgotPassword = async (req, res) => {
 exports.resetPassword = async (req, res) => {
     try {
         const hashed = crypto.createHash('sha256').update(req.params.token).digest('hex');
-        const user   = await User.findOne({
-            resetPasswordToken:  hashed,
+        const user = await User.findOne({
+            resetPasswordToken: hashed,
             resetPasswordExpire: { $gt: Date.now() },
         });
         if (!user) return res.status(400).json({ message: 'Reset token is invalid or has expired.' });
         const nextPassword = req.body.password || '';
         if (!validateStrongPassword(nextPassword).isValid)
             return res.status(400).json({ message: PASSWORD_POLICY_TEXT });
-        user.password            = nextPassword;
-        user.resetPasswordToken  = undefined;
+        user.password = nextPassword;
+        user.resetPasswordToken = undefined;
         user.resetPasswordExpire = undefined;
         await user.save();
         return res.json({ message: 'Password reset successful. Please login.' });

@@ -7,6 +7,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import * as api from '../../api';
 import toast from 'react-hot-toast';
 import FaceVerification, { dataURLtoBlob } from './FaceVerification';
+import LocationMapPicker from '../../components/LocationMapPicker';
 import { PASSWORD_POLICY_TEXT, getPasswordStrength, isStrongPassword } from '../../constants/passwordPolicy';
 import skillList from '../../constants/skillList';
 import {
@@ -265,9 +266,20 @@ const WorkerRegister = () => {
 
     const handleSendOtp = async () => {
         if (!formData.mobile || formData.mobile.length !== 10) return toast.error('Valid 10-digit mobile required');
-        const id = toast.loading('Sending OTP…');
-        try { await api.sendOtp({ mobile: formData.mobile }); setOtpSent(true); setOtpTimer(59); toast.success('OTP sent!', { id }); }
-        catch { toast.error('Failed to send OTP', { id }); }
+        const id = toast.loading('Checking & sending OTP…');
+        try {
+            await api.sendOtp({ mobile: formData.mobile, type: 'worker' });
+            setOtpSent(true);
+            setOtpTimer(59);
+            toast.success('OTP sent!', { id });
+        } catch (err) {
+            const data = err.response?.data;
+            if (data?.alreadyRegistered) {
+                toast.error(data.message || 'Already registered. Please login.', { id, duration: 5000 });
+            } else {
+                toast.error(err.response?.data?.message || 'Failed to send OTP', { id });
+            }
+        }
     };
     const handleVerifyOtp = async () => {
         if (!otp) return toast.error('Enter OTP');
@@ -297,62 +309,17 @@ const WorkerRegister = () => {
         closeLegalPreview();
     };
 
-    const captureLocation = async () => {
-        setLocationError('');
-        if (!navigator.geolocation) {
-            const msg = 'Geolocation is not supported by your browser.';
-            setLocationError(msg);
-            toast.error(msg);
-            return;
-        }
-
-        navigator.geolocation.getCurrentPosition(
-            async (position) => {
-                const { latitude, longitude } = position.coords;
-                setFormData((prev) => ({
-                    ...prev,
-                    latitude: latitude.toFixed(6),
-                    longitude: longitude.toFixed(6),
-                }));
-
-                try {
-                    const response = await fetch(
-                        `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`
-                    );
-                    const data = await response.json();
-                    const addr = data?.address || {};
-
-                    const houseNum = addr.house_number || '';
-                    const roadName = addr.road || addr.street || '';
-                    const fullAddress = [houseNum, roadName].filter(Boolean).join(', ');
-                    const districtName = addr.county || addr.city || addr.town || addr.state_district || '';
-                    const villageName = addr.village || addr.hamlet || addr.suburb || '';
-                    const pincode = addr.postcode || '';
-
-                    setFormData((prev) => ({
-                        ...prev,
-                        fullAddress: fullAddress || prev.fullAddress,
-                        city: districtName || prev.city,
-                        village: villageName || prev.village,
-                        locality: villageName || prev.locality,
-                        pincode: pincode || prev.pincode,
-                    }));
-
-                    toast.success('Live location captured and address auto-filled.');
-                } catch {
-                    toast.success('Live location captured. You can fill address manually.');
-                }
-            },
-            (error) => {
-                let msg = 'Unable to capture live location.';
-                if (error.code === error.PERMISSION_DENIED) msg = 'Location permission denied. Please enable location access.';
-                else if (error.code === error.POSITION_UNAVAILABLE) msg = 'Location information is unavailable.';
-                else if (error.code === error.TIMEOUT) msg = 'Location request timed out. Please try again.';
-                setLocationError(msg);
-                toast.error(msg);
-            },
-            { enableHighAccuracy: true, timeout: 12000, maximumAge: 0 }
-        );
+    const handleMapLocationSelected = (locationInfo) => {
+        setFormData((prev) => ({
+            ...prev,
+            latitude: locationInfo.latitude,
+            longitude: locationInfo.longitude,
+            fullAddress: locationInfo.fullAddress || prev.fullAddress,
+            city: locationInfo.city || prev.city,
+            village: locationInfo.village || prev.village,
+            locality: locationInfo.locality || prev.locality,
+            pincode: locationInfo.pincode || prev.pincode,
+        }));
     };
 
     const runFaceSimilarityCheck = async (photoDataUrl) => {
@@ -720,24 +687,49 @@ const WorkerRegister = () => {
                         {activeSection === 2 && (
                             <div className="space-y-8">
                                 <div className="text-center"><h2 className="text-3xl font-bold text-orange-800 flex items-center justify-center"><MapPin className="h-8 w-8 mr-3"/>Address & Documents</h2></div>
-                                <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-6 rounded-2xl border-2 border-orange-200">
-                                    <h3 className="text-xl font-semibold text-orange-800 mb-4 flex items-center"><MapPin className="h-5 w-5 mr-2"/>Address</h3>
-                                    <button
-                                        type="button"
-                                        onClick={captureLocation}
-                                        className="mb-4 px-5 py-3 bg-orange-100 text-orange-700 font-semibold rounded-xl hover:bg-orange-200 border border-orange-300"
-                                    >
-                                        Use Live Location
-                                    </button>
-                                    {locationError && <p className="text-sm text-red-600 mb-3">{locationError}</p>}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        <div className="md:col-span-2"><label className="block text-sm font-semibold text-gray-700 mb-2">Full Address *</label><input name="fullAddress" value={formData.fullAddress} placeholder="House/Street/Area" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
-                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">District *</label><input name="city" value={formData.city} placeholder="Your district" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
-                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">Village *</label><input name="village" value={formData.village} placeholder="Village / Area" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
-                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">Pincode *</label><input name="pincode" value={formData.pincode} placeholder="Area pincode" onChange={handleChange} required maxLength={6} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
-                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">Locality *</label><input name="locality" value={formData.locality} placeholder="Area / Locality" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
-                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">Latitude *</label><input name="latitude" value={formData.latitude} placeholder="e.g. 28.6139" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
-                                        <div><label className="block text-sm font-semibold text-gray-700 mb-2">Longitude *</label><input name="longitude" value={formData.longitude} placeholder="e.g. 77.2090" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/></div>
+                                <div className="space-y-4">
+                                    <div className="bg-white border-2 border-orange-200 p-4 rounded-2xl shadow-sm">
+                                        <label className="block text-sm font-semibold text-orange-800 mb-2">Select Location on Map</label>
+                                        <LocationMapPicker
+                                            onLocationSelected={handleMapLocationSelected}
+                                            initialLat={formData.latitude}
+                                            initialLng={formData.longitude}
+                                        />
+                                    </div>
+
+                                    <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-6 rounded-2xl border-2 border-orange-200">
+                                        <h3 className="text-xl font-semibold text-orange-800 mb-4 flex items-center"><MapPin className="h-5 w-5 mr-2"/>Address</h3>
+                                        {locationError && <p className="text-sm text-red-600 mb-3">{locationError}</p>}
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                            <div className="md:col-span-2">
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Full Address *</label>
+                                                <input name="fullAddress" value={formData.fullAddress} placeholder="House/Street/Area" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">District *</label>
+                                                <input name="city" value={formData.city} placeholder="Your district" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Village *</label>
+                                                <input name="village" value={formData.village} placeholder="Village / Area" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Pincode *</label>
+                                                <input name="pincode" value={formData.pincode} placeholder="Area pincode" onChange={handleChange} required maxLength={6} className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Locality *</label>
+                                                <input name="locality" value={formData.locality} placeholder="Area / Locality" onChange={handleChange} required className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-white"/>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Latitude *</label>
+                                                <input name="latitude" value={formData.latitude} placeholder="e.g. 28.6139" onChange={handleChange} required readOnly className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-gray-100 text-gray-500 cursor-not-allowed"/>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-semibold text-gray-700 mb-2">Longitude *</label>
+                                                <input name="longitude" value={formData.longitude} placeholder="e.g. 77.2090" onChange={handleChange} required readOnly className="w-full px-4 py-4 border-2 border-orange-200 rounded-xl bg-gray-100 text-gray-500 cursor-not-allowed"/>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
