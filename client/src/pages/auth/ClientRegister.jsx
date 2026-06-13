@@ -37,17 +37,6 @@ const parseLocalDate = (dateValue) => {
     return date;
 };
 
-const getAgeFromDob = (dobValue) => {
-    const dobDate = parseLocalDate(dobValue);
-    if (!dobDate || Number.isNaN(dobDate.getTime())) return null;
-
-    const now = new Date();
-    let years = now.getFullYear() - dobDate.getFullYear();
-    const monthDelta = now.getMonth() - dobDate.getMonth();
-    if (monthDelta < 0 || (monthDelta === 0 && now.getDate() < dobDate.getDate())) years -= 1;
-    return years;
-};
-
 const ClientRegister = () => {
     const [formData, setFormData] = useState({
         // Basic
@@ -177,17 +166,6 @@ const ClientRegister = () => {
 
     const handleChange = (e) => {
         const { name, value } = e.target;
-
-        if (name === 'dob') {
-            const detectedAge = getAgeFromDob(value);
-            setFormData((prev) => ({
-                ...prev,
-                dob: value,
-                age: detectedAge !== null ? String(detectedAge) : prev.age,
-            }));
-            return;
-        }
-
         setFormData((prev) => ({ ...prev, [name]: value }));
     };
     const handleFileChange = e => {
@@ -318,11 +296,6 @@ const ClientRegister = () => {
         const dobDate = parseLocalDate(formData.dob);
         if (!dobDate || Number.isNaN(dobDate.getTime())) return toast.error('Birth date is invalid.');
         if (dobDate > new Date()) return toast.error('Birth date cannot be in the future.');
-        const calculatedAge = getAgeFromDob(formData.dob);
-        if (calculatedAge === null) return toast.error('Birth date is invalid.');
-        if (calculatedAge !== ageNum) {
-            setFormData((prev) => ({ ...prev, age: String(calculatedAge) }));
-        }
         if (!formData.gender) return toast.error('Gender is required.');
         if (formData.password !== formData.confirmPassword) return toast.error("Passwords don't match");
         if (!isStrongPassword(formData.password)) return toast.error(PASSWORD_POLICY_TEXT);
@@ -349,11 +322,6 @@ const ClientRegister = () => {
         if (!formData.dob) return toast.error('Enter your birth date.');
         const dobDate = parseLocalDate(formData.dob);
         if (!dobDate || Number.isNaN(dobDate.getTime()) || dobDate > new Date()) return toast.error('Enter a valid birth date.');
-        const calculatedAge = getAgeFromDob(formData.dob);
-        if (calculatedAge === null) return toast.error('Enter a valid birth date.');
-        if (calculatedAge !== ageNum) {
-            setFormData((prev) => ({ ...prev, age: String(calculatedAge) }));
-        }
         if (!formData.gender) return toast.error('Select gender.');
         // NEW: Validate security fields
         if (!formData.emergencyContactName?.trim()) return toast.error('Enter emergency contact name.');
@@ -712,7 +680,7 @@ const ClientRegister = () => {
                                             )}
                                             {formData.age && formData.dob && (
                                                 <p className="text-xs text-blue-700">
-                                                    Age: {getAgeFromDob(formData.dob)} years
+                                                    Age: {formData.age || 'N/A'} years
                                                 </p>
                                             )}
                                         </div>
@@ -729,20 +697,6 @@ const ClientRegister = () => {
                                             <option value="Other">Other</option>
                                         </select>
                                     </div>
-
-                                    {/* Age & DOB Validation Help Text */}
-                                    {formData.age && formData.dob && (
-                                        <div className={`p-3 rounded-lg text-sm font-semibold ${
-                                            getAgeFromDob(formData.dob) === Number(formData.age) 
-                                                ? 'bg-green-50 text-green-700 border border-green-200'
-                                                : 'bg-amber-50 text-amber-700 border border-amber-200'
-                                        }`}>
-                                            {getAgeFromDob(formData.dob) === Number(formData.age) 
-                                                ? `✓ Age matches DOB (${getAgeFromDob(formData.dob)} years)`
-                                                : `⚠️ Age (${formData.age}) doesn't match DOB (${getAgeFromDob(formData.dob)} years) - they should be equal`
-                                            }
-                                        </div>
-                                    )}
 
                                     {/* NEW: Emergency Contact */}
                                     <div className="border-2 border-orange-200 rounded-lg p-4 bg-white">
