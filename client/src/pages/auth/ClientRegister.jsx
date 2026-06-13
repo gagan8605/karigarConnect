@@ -650,20 +650,24 @@ const ClientRegister = () => {
                                     </div>
 
                                     {/* Age, Birth date and Gender */}
-                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                        <input
-                                            type="number"
-                                            name="age"
-                                            min="18"
-                                            step="1"
-                                            value={formData.age}
-                                            placeholder="Age (18+)"
-                                            onChange={handleChange}
-                                            className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500"
-                                        />
-                                        
-                                        {/* DOB Input with Manual Day/Month/Year Selection */}
-                                        <div className="space-y-2">
+                                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-start">
+                                        {/* Age */}
+                                        <div className="space-y-1">
+                                            <label className="block text-xs font-semibold text-orange-700">Age (18+)</label>
+                                            <input
+                                                type="number"
+                                                name="age"
+                                                min="18"
+                                                step="1"
+                                                value={formData.age}
+                                                placeholder="e.g. 25"
+                                                onChange={handleChange}
+                                                className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500"
+                                            />
+                                        </div>
+
+                                        {/* Date of Birth */}
+                                        <div className="space-y-1">
                                             <label className="block text-xs font-semibold text-orange-700">Date of Birth</label>
                                             <input
                                                 type="date"
@@ -679,23 +683,25 @@ const ClientRegister = () => {
                                                 </p>
                                             )}
                                             {formData.age && formData.dob && (
-                                                <p className="text-xs text-blue-700">
-                                                    Age: {formData.age || 'N/A'} years
-                                                </p>
+                                                <p className="text-xs text-blue-700">Age: {formData.age} years</p>
                                             )}
                                         </div>
-                                        
-                                        <select
-                                            name="gender"
-                                            value={formData.gender}
-                                            onChange={handleChange}
-                                            className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500"
-                                        >
-                                            <option value="">Select Gender</option>
-                                            <option value="Male">Male</option>
-                                            <option value="Female">Female</option>
-                                            <option value="Other">Other</option>
-                                        </select>
+
+                                        {/* Gender */}
+                                        <div className="space-y-1">
+                                            <label className="block text-xs font-semibold text-orange-700">Gender</label>
+                                            <select
+                                                name="gender"
+                                                value={formData.gender}
+                                                onChange={handleChange}
+                                                className="w-full px-4 py-3 bg-white border border-orange-300 rounded-lg text-gray-800 focus:ring-2 focus:ring-orange-500"
+                                            >
+                                                <option value="">Select Gender</option>
+                                                <option value="Male">Male</option>
+                                                <option value="Female">Female</option>
+                                                <option value="Other">Other</option>
+                                            </select>
+                                        </div>
                                     </div>
 
                                     {/* NEW: Emergency Contact */}
