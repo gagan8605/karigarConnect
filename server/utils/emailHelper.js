@@ -9,6 +9,14 @@ const tranEmailApi = new SibApiV3Sdk.TransactionalEmailsApi();
 
 console.log('[EMAIL] Brevo API initialized (HTTP/HTTPS, port 443)');
 
+const isBrevoIpRestrictionError = (err) => {
+    const message = String(err?.response?.body?.message || err?.message || '').toLowerCase();
+    return message.includes('unrecognised ip address')
+        || message.includes('unrecognized ip address')
+        || message.includes('authorised ip')
+        || message.includes('authorized ip');
+};
+
 const requireBrevoConfig = () => {
     if (!process.env.BREVO_API_KEY) {
         throw new Error('BREVO_API_KEY is missing. Configure a Brevo v3 API key.');
@@ -88,6 +96,12 @@ exports.sendOtpEmail = async (to, otp) => {
     } catch (err) {
         const errorMsg = err.response?.body?.message || err.message || 'Unknown error';
         console.error(`[EMAIL OTP] Failed sending to ${to}:`, errorMsg);
+
+        if (process.env.NODE_ENV !== 'production' && isBrevoIpRestrictionError(err)) {
+            console.warn(`[EMAIL OTP] Development fallback enabled for ${to}; Brevo rejected the current IP.`);
+            return { success: true, devFallback: true, messageId: 'dev-fallback' };
+        }
+
         throw err;
     }
 };
