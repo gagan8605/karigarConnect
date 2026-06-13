@@ -242,18 +242,23 @@ const ClientRegister = () => {
     const handleSendMobileOtp = async () => {
         if (!formData.mobile || formData.mobile.length !== 10) return toast.error('Valid 10-digit mobile required');
         if (mobileOtpCooldownSec > 0) return toast.error(`Please wait ${mobileOtpCooldownSec}s before requesting another OTP.`);
-        const id = toast.loading('Sending Mobile OTP…');
+        const id = toast.loading('Checking & sending Mobile OTP…');
         try {
-            await api.sendOtp({ mobile: formData.mobile });
+            await api.sendOtp({ mobile: formData.mobile, type: 'client' });
             setMobileOtpSent(true);
             setMobileOtpCooldownSec(60);
             toast.success('OTP sent!', { id });
         }
         catch (err) {
-            const retryAfter = Number(err?.response?.data?.retryAfterSeconds || 0);
-            const message = err?.response?.data?.message || 'Failed to send mobile OTP';
-            if (retryAfter > 0) setMobileOtpCooldownSec(retryAfter);
-            toast.error(message, { id });
+            const data = err?.response?.data;
+            if (data?.alreadyRegistered) {
+                toast.error(data.message || 'Already registered. Please login.', { id, duration: 5000 });
+            } else {
+                const retryAfter = Number(data?.retryAfterSeconds || 0);
+                const message = data?.message || 'Failed to send mobile OTP';
+                if (retryAfter > 0) setMobileOtpCooldownSec(retryAfter);
+                toast.error(message, { id });
+            }
         }
     };
     const handleVerifyMobileOtp = async () => {
@@ -265,18 +270,23 @@ const ClientRegister = () => {
     const handleSendEmailOtp = async () => {
         if (!formData.email) return toast.error('Enter email address');
         if (emailOtpCooldownSec > 0) return toast.error(`Please wait ${emailOtpCooldownSec}s before requesting another OTP.`);
-        const id = toast.loading('Sending Email OTP…');
+        const id = toast.loading('Checking & sending Email OTP…');
         try {
-            await api.sendOtp({ email: formData.email });
+            await api.sendOtp({ email: formData.email, type: 'client' });
             setEmailOtpSent(true);
             setEmailOtpCooldownSec(60);
             toast.success('OTP sent to email!', { id });
         }
         catch (err) {
-            const retryAfter = Number(err?.response?.data?.retryAfterSeconds || 0);
-            const message = err?.response?.data?.message || 'Failed to send email OTP';
-            if (retryAfter > 0) setEmailOtpCooldownSec(retryAfter);
-            toast.error(message, { id });
+            const data = err?.response?.data;
+            if (data?.alreadyRegistered) {
+                toast.error(data.message || 'Already registered. Please login.', { id, duration: 5000 });
+            } else {
+                const retryAfter = Number(data?.retryAfterSeconds || 0);
+                const message = data?.message || 'Failed to send email OTP';
+                if (retryAfter > 0) setEmailOtpCooldownSec(retryAfter);
+                toast.error(message, { id });
+            }
         }
     };
     const handleVerifyEmailOtp = async () => {
