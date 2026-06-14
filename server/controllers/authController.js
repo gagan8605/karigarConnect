@@ -25,9 +25,15 @@ const OTP_TTL_MS = 5 * 60 * 1000; // 5 minutes
 const OTP_MAX_VERIFY_ATTEMPTS = 5;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-const generateUserId = () =>
-    'KC-' + Math.random().toString(36).substring(2, 7).toUpperCase() +
-    Math.floor(100 + Math.random() * 900);
+const generateUserId = async (maxAttempts = 10) => {
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        const random = Math.floor(100000 + Math.random() * 900000);
+        const userId = `K${random}`;
+        const exists = await User.findOne({ userId }).lean();
+        if (!exists) return userId;
+    }
+    throw new Error('Could not generate a unique User ID after multiple attempts. Please try again.');
+};
 
 const normalizeIdNumber = (value = '') => String(value).replace(/\s+/g, '').toUpperCase().trim();
 
@@ -467,7 +473,7 @@ exports.registerWorker = async (req, res) => {
 
         // ── Create user ───────────────────────────────────────────────────────
         const user = await User.create({
-            userId: generateUserId(),
+            userId: await generateUserId(),
             role: 'worker', name: name.trim(), dob, age: computedAge, mobile, phoneType,
             email: email || null, password,
             address: {
@@ -824,7 +830,7 @@ exports.registerClient = async (req, res) => {
 
         // ── Create client ─────────────────────────────────────────────────────
         const user = await User.create({
-            userId: generateUserId(),
+            userId: await generateUserId(),
             role: 'client', name: name.trim(), mobile, email,
             age: ageFromDob,
             dob: dobDate,
