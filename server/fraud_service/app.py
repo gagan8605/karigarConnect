@@ -209,14 +209,10 @@ if __name__ == "__main__":
 
     scheduler = start_scheduler()
 
-    # When deployed on Render, the platform provides the PORT env var.
-    # Locally we still support FRAUD_SERVICE_HOST / FRAUD_SERVICE_PORT.
-    DEFAULT_HOST = "0.0.0.0" if os.environ.get("PORT") else "127.0.0.1"
-    HOST = os.environ.get(
-        "HOST",
-        os.environ.get("FRAUD_SERVICE_HOST", DEFAULT_HOST)
-    )
-    PORT = int(os.environ.get("PORT", os.environ.get("FRAUD_SERVICE_PORT", 5001)))
+    # Use FRAUD_SERVICE_PORT exclusively (never pick up Node.js's PORT var).
+    # Locally binds to 127.0.0.1; set FRAUD_SERVICE_HOST=0.0.0.0 for cloud.
+    HOST = os.environ.get("FRAUD_SERVICE_HOST", "127.0.0.1")
+    PORT = int(os.environ.get("FRAUD_SERVICE_PORT", 5001))
 
     try:
 

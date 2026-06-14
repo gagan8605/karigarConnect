@@ -36,6 +36,7 @@ const locationRoutes             = require('./routes/locationRoutes');
 const semanticMatchingRoutes     = require('./routes/semanticMatchingRoutes');
 const chatbotRoutes              = require('./routes/chatbotRoutes');
 const chatbotSupportRoutes       = require('./routes/chatbotSupportRoutes');
+const analyticsRoutes            = require('./routes/analyticsRoutes');
 const { rebuildAllIndexes }      = require('./services/semanticMatchingService');
 const { ensureAdminAccounts }    = require('./utils/adminAccounts');
 const { sweepDirectHirePayments } = require('./controllers/directHireController');
@@ -238,6 +239,7 @@ app.use('/api/location',                 locationRoutes);
 app.use('/api/matching',                 semanticMatchingRoutes);
 app.use('/api/chatbot',                  chatbotRoutes);
 app.use('/api/chatbot/support',          chatbotSupportRoutes);
+app.use('/api/analytics',                analyticsRoutes);
 
 // ── Health checks ─────────────────────────────────────────────────────────────
 app.get('/', (req, res) => res.json({ status: 'ok', message: '🚀 KarigarConnect API', version: '2.5.0' }));

@@ -6,11 +6,11 @@ flask-socketio==5.3.6
 flask-cors==4.0.1
 pymongo==4.7.2
 python-dotenv==1.0.1
-xgboost==2.0.3
- dask==2024.5.0
- distributed==2024.5.0
+xgboost==2.1.4
+dask==2024.5.0
+distributed==2024.5.0
 scikit-learn==1.5.0
- pyarrow==13.0.0
+pyarrow==24.0.0
 shap==0.45.1
 pandas==2.2.2
 numpy==1.26.4
