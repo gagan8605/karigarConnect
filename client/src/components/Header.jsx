@@ -326,20 +326,12 @@ const Header = () => {
                         {!isLoggedIn && (
                             <>
                                 {/* About Us Link - Only for non-logged in users */}
-                                <a href="#about-us" className={navLinkClass('')}>
-                                    <motion.span
-                                        initial={false}
-                                        className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full origin-left"
-                                    />
+                                <a href="/#about-us" className={navLinkClass('')}>
                                     <span>About Us</span>
                                 </a>
 
                                 {/* Contact Link - Only for non-logged in users */}
-                                <a href="#contact" className={navLinkClass('')}>
-                                    <motion.span
-                                        initial={false}
-                                        className="absolute inset-x-0 bottom-0 h-0.5 bg-gradient-to-r from-orange-500 to-amber-500 rounded-full origin-left"
-                                    />
+                                <a href="/#contact" className={navLinkClass('')}>
                                     <span>Contact</span>
                                 </a>
                             </>
@@ -698,7 +690,7 @@ const Header = () => {
                             {!isLoggedIn && (
                                 <>
                                     <a 
-                                        href="#about-us"
+                                        href="/#about-us"
                                         onClick={() => setMobileMenuOpen(false)}
                                         className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-amber-50 rounded-xl transition-all group min-h-[48px]"
                                     >
@@ -707,7 +699,7 @@ const Header = () => {
                                     </a>
                                     
                                     <a 
-                                        href="#contact"
+                                        href="/#contact"
                                         onClick={() => setMobileMenuOpen(false)}
                                         className="flex items-center gap-3 px-4 py-3 text-gray-700 hover:bg-gradient-to-r hover:from-orange-50 hover:to-amber-50 rounded-xl transition-all group min-h-[48px]"
                                     >

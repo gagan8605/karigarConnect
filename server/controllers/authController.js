@@ -103,12 +103,15 @@ exports.sendOtp = async (req, res) => {
         const identifier = mobile || email;
         if (!identifier) return res.status(400).json({ message: 'Mobile or email required.' });
 
-        // Check if user is already registered
-        const query = mobile ? { mobile } : { email };
-        const existingUser = await User.findOne(query).select('role').lean();
+        // Check if user is already registered using both mobile and email if provided
+        const query = { $or: [] };
+        if (mobile) query.$or.push({ mobile });
+        if (email) query.$or.push({ email });
+        const existingUser = await User.findOne(query).select('role mobile email').lean();
         if (existingUser) {
+            const matchedField = existingUser.mobile === mobile ? 'mobile number' : 'email';
             return res.status(409).json({
-                message: `This ${mobile ? 'mobile number' : 'email'} is already registered as a ${existingUser.role}. Please login instead.`,
+                message: `This ${matchedField} is already registered as a ${existingUser.role}. Please login instead.`,
                 alreadyRegistered: true
             });
         }
@@ -206,7 +209,11 @@ exports.verifyOtp = async (req, res) => {
 
         otpStore.delete(identifier);
         otpAttemptStore.delete(identifier);
-        return res.json({ message: 'OTP verified successfully.' });
+        
+        // Generate a verified token that the frontend must pass during registration
+        const otpVerifiedToken = jwt.sign({ verifiedIdentifier: identifier, type: 'otp_verification' }, process.env.JWT_SECRET, { expiresIn: '15m' });
+        
+        return res.json({ message: 'OTP verified successfully.', otpVerifiedToken });
     } catch { return res.status(500).json({ message: 'Failed to verify OTP.' }); }
 };
 
@@ -341,7 +348,21 @@ exports.registerWorker = async (req, res) => {
             idNumber, gender, eShramNumber, idDocumentType,
             emergencyContactName, emergencyContactMobile, phoneType, travelMethod, ageConsent, skills, references, primarySkill,
             expectedMinPay, expectedMaxPay, preferredJobCategories,
+            otpVerifiedToken,
         } = req.body;
+
+        // ── OTP Verification Validation ───────────────────────────────────────
+        if (!otpVerifiedToken) {
+            return res.status(403).json({ message: 'OTP verification is required. Please verify your mobile number first.' });
+        }
+        try {
+            const decodedOtp = jwt.verify(otpVerifiedToken, process.env.JWT_SECRET);
+            if (decodedOtp.type !== 'otp_verification' || decodedOtp.verifiedIdentifier !== mobile) {
+                return res.status(403).json({ message: 'OTP verification mismatch. Please verify the mobile number you are trying to register.' });
+            }
+        } catch (err) {
+            return res.status(403).json({ message: 'OTP verification token is invalid or expired. Please verify your mobile number again.' });
+        }
 
         // ── Basic validation ──────────────────────────────────────────────────
         if (!name?.trim()) return res.status(400).json({ message: 'Full name is required.' });
@@ -566,7 +587,21 @@ exports.registerClient = async (req, res) => {
             // T&C acceptance
             termsPaymentAccepted, termsDisputePolicyAccepted, termsDataPrivacyAccepted, termsWorkerProtectionAccepted,
             termsAccepted, privacyAccepted,
+            otpVerifiedToken,
         } = req.body;
+
+        // ── OTP Verification Validation ───────────────────────────────────────
+        if (!otpVerifiedToken) {
+            return res.status(403).json({ message: 'OTP verification is required. Please verify your mobile number first.' });
+        }
+        try {
+            const decodedOtp = jwt.verify(otpVerifiedToken, process.env.JWT_SECRET);
+            if (decodedOtp.type !== 'otp_verification' || decodedOtp.verifiedIdentifier !== mobile) {
+                return res.status(403).json({ message: 'OTP verification mismatch. Please verify the mobile number you are trying to register.' });
+            }
+        } catch (err) {
+            return res.status(403).json({ message: 'OTP verification token is invalid or expired. Please verify your mobile number again.' });
+        }
 
         // ── Validation ────────────────────────────────────────────────────────
         if (!name?.trim()) return res.status(400).json({ message: 'Name is required.' });

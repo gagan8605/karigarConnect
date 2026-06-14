@@ -71,6 +71,14 @@ export default function DirectInvites() {
         return 'text-rose-600';
     };
 
+    const openGoogleMapsDirections = (lat, lng) => {
+        if (lat && lng) {
+            window.open(`https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}`, '_blank');
+        } else {
+            toast.error('Location coordinates not available');
+        }
+    };
+
     const loadInvites = async () => {
         try {
             setLoading(true);

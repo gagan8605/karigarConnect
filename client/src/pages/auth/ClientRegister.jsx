@@ -72,6 +72,7 @@ const ClientRegister = () => {
     const [emailOtpSent,     setEmailOtpSent]      = useState(false);
     const [mobileVerified,   setMobileVerified]    = useState(false);
     const [emailVerified,    setEmailVerified]     = useState(false);
+    const [otpVerifiedToken, setOtpVerifiedToken]  = useState('');
 
     // Face verification state
     const [showFaceVerif,    setShowFaceVerif]     = useState(false);
@@ -110,6 +111,7 @@ const ClientRegister = () => {
             if (draft.livePhotoData) setLivePhotoData(draft.livePhotoData);
             if (typeof draft.faceMatchPassed === 'boolean') setFaceMatchPassed(draft.faceMatchPassed);
             if (draft.faceMessage) setFaceMessage(draft.faceMessage);
+            if (draft.otpVerifiedToken) setOtpVerifiedToken(draft.otpVerifiedToken);
         } catch {
             sessionStorage.removeItem(DRAFT_KEY);
         }
@@ -127,6 +129,7 @@ const ClientRegister = () => {
             livePhotoData,
             faceMatchPassed,
             faceMessage,
+            otpVerifiedToken,
         };
         sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     }, [
@@ -139,6 +142,7 @@ const ClientRegister = () => {
         livePhotoData,
         faceMatchPassed,
         faceMessage,
+        otpVerifiedToken,
     ]);
 
     useEffect(() => {
@@ -220,7 +224,14 @@ const ClientRegister = () => {
     const handleVerifyMobileOtp = async () => {
         if (!mobileOtp) return toast.error('Enter mobile OTP');
         const id = toast.loading('Verifying…');
-        try { await api.verifyOtp({ identifier: formData.mobile, otp: mobileOtp }); setMobileVerified(true); toast.success('Mobile verified!', { id }); }
+        try { 
+            const res = await api.verifyOtp({ identifier: formData.mobile, otp: mobileOtp }); 
+            setMobileVerified(true); 
+            if (res.data?.otpVerifiedToken) {
+                setOtpVerifiedToken(res.data.otpVerifiedToken);
+            }
+            toast.success('Mobile verified!', { id }); 
+        }
         catch { toast.error('Invalid Mobile OTP', { id }); }
     };
     const handleSendEmailOtp = async () => {
@@ -397,6 +408,7 @@ const ClientRegister = () => {
             ageVerified: Number(formData.age) >= 18,
         };
         Object.keys(normalizedForm).forEach(k => data.append(k, normalizedForm[k]));
+        if (otpVerifiedToken) data.append('otpVerifiedToken', otpVerifiedToken);
         data.append('termsPaymentAccepted', String(!!formData.termsAccepted));
         data.append('termsDisputePolicyAccepted', String(!!formData.termsAccepted));
         data.append('termsWorkerProtectionAccepted', String(!!formData.termsAccepted));

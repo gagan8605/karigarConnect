@@ -154,15 +154,6 @@ const Home = () => {
         { icon: '💰', title: 'Fair Pricing', description: 'Transparent costs with no hidden charges', color: 'from-emerald-500 to-teal-500' },
     ];
 
-    const stats = [
-        { value: '10,000+', label: 'Registered Karigars', icon: Users, gradient: 'from-orange-500 to-amber-500' },
-        { value: '5,000+', label: 'Happy Clients', icon: Heart, gradient: 'from-rose-500 to-pink-500' },
-        { value: '500+', label: 'Partner Shops', icon: Store, gradient: 'from-teal-500 to-emerald-500' },
-        { value: '25,000+', label: 'Jobs Completed', icon: Briefcase, gradient: 'from-blue-500 to-cyan-500' },
-        { value: '4.8★', label: 'Average Rating', icon: Star, gradient: 'from-yellow-500 to-amber-500' },
-        { value: '98%', label: 'Success Rate', icon: TrendingUp, gradient: 'from-green-500 to-emerald-500' },
-    ];
-
     const testimonials = [
         { name: 'Ramesh Kumar', role: 'Karigar - Plumber', content: 'KarigarConnect changed my life! I now get regular work and fair payments. The platform is easy to use and the support team is great.', rating: 5, location: 'Pune', image: 'https://randomuser.me/api/portraits/men/32.jpg' },
         { name: 'Priya Sharma', role: 'Client - Homeowner', content: 'Found a fantastic electrician through this platform. The verification process gives me confidence. Highly recommended!', rating: 5, location: 'Mumbai', image: 'https://randomuser.me/api/portraits/women/44.jpg' },
@@ -294,44 +285,6 @@ const Home = () => {
                         <div className="w-1 h-2 bg-white rounded-full mt-2 animate-scroll" />
                     </div>
                 </motion.div>
-            </section>
-
-            {/* Stats Section - Animated Counter */}
-            <section className="py-16 bg-white">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="text-center mb-12">
-                        <motion.div
-                            initial={{ opacity: 0, y: 20 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true }}
-                            className="inline-flex items-center gap-2 bg-orange-100 rounded-full px-4 py-2 mb-4"
-                        >
-                            <TrendingUp className="w-4 h-4 text-orange-600" />
-                            <span className="text-orange-600 text-sm font-semibold">Our Impact</span>
-                        </motion.div>
-                        <h2 className="text-3xl sm:text-4xl font-bold text-gray-900">Making a Difference Across India</h2>
-                        <p className="mt-4 text-lg text-gray-600 max-w-3xl mx-auto">Trusted by thousands of users nationwide</p>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6">
-                        {stats.map((stat, idx) => (
-                            <motion.div
-                                key={idx}
-                                initial={{ opacity: 0, y: 20 }}
-                                whileInView={{ opacity: 1, y: 0 }}
-                                viewport={{ once: true }}
-                                transition={{ delay: idx * 0.1 }}
-                                className="text-center"
-                            >
-                                <div className={`w-12 h-12 rounded-xl bg-gradient-to-r ${stat.gradient} flex items-center justify-center mx-auto mb-3 shadow-md`}>
-                                    <stat.icon className="w-6 h-6 text-white" />
-                                </div>
-                                <p className="text-2xl font-bold text-gray-900">{stat.value}</p>
-                                <p className="text-sm text-gray-500 mt-1">{stat.label}</p>
-                            </motion.div>
-                        ))}
-                    </div>
-                </div>
             </section>
 
             {/* Features Section */}

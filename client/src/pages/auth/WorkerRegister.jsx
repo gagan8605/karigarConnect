@@ -78,6 +78,7 @@ const WorkerRegister = () => {
     const [references,   setReferences]    = useState([{ name:'', contact:'' }]);
     const [otp,          setOtp]           = useState('');
     const [mobileVerified, setMobileVerified] = useState(false);
+    const [otpVerifiedToken, setOtpVerifiedToken] = useState('');
     const [otpSent,      setOtpSent]       = useState(false);
     const [otpTimer,     setOtpTimer]      = useState(0);
     const [activeSection,setActiveSection] = useState(0);
@@ -133,6 +134,7 @@ const WorkerRegister = () => {
             if (draft.livePhotoData) setLivePhotoData(draft.livePhotoData);
             if (typeof draft.faceMatchPassed === 'boolean') setFaceMatchPassed(draft.faceMatchPassed);
             if (draft.faceMessage) setFaceMessage(draft.faceMessage);
+            if (draft.otpVerifiedToken) setOtpVerifiedToken(draft.otpVerifiedToken);
         } catch {
             sessionStorage.removeItem(DRAFT_KEY);
         }
@@ -151,6 +153,7 @@ const WorkerRegister = () => {
             livePhotoData,
             faceMatchPassed,
             faceMessage,
+            otpVerifiedToken,
         };
         sessionStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
     }, [
@@ -165,6 +168,7 @@ const WorkerRegister = () => {
         livePhotoData,
         faceMatchPassed,
         faceMessage,
+        otpVerifiedToken,
     ]);
 
     const handleChange = (e) => {
@@ -284,7 +288,15 @@ const WorkerRegister = () => {
     const handleVerifyOtp = async () => {
         if (!otp) return toast.error('Enter OTP');
         const id = toast.loading('Verifying…');
-        try { await api.verifyOtp({ identifier: formData.mobile, otp }); setMobileVerified(true); setOtpTimer(0); toast.success('Mobile verified!', { id }); }
+        try { 
+            const res = await api.verifyOtp({ identifier: formData.mobile, otp }); 
+            setMobileVerified(true); 
+            setOtpTimer(0); 
+            if (res.data?.otpVerifiedToken) {
+                setOtpVerifiedToken(res.data.otpVerifiedToken);
+            }
+            toast.success('Mobile verified!', { id }); 
+        }
         catch { toast.error('Invalid OTP', { id }); }
     };
 
@@ -424,6 +436,7 @@ const WorkerRegister = () => {
         data.append('skills',     JSON.stringify(finalSkills));
         data.append('primarySkill', primarySkill);
         data.append('references', JSON.stringify(references));
+        if (otpVerifiedToken) data.append('otpVerifiedToken', otpVerifiedToken);
         if (files.photo)     data.append('photo',     files.photo);
         if (files.idProof)   data.append('idProof',   files.idProof);
         if (files.eShramCard)data.append('eShramCard',files.eShramCard);

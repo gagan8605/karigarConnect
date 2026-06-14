@@ -113,34 +113,7 @@ const Register = () => {
                     </p>
                 </motion.div>
 
-                {/* Stats Banner */}
-                <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.2 }}
-                    className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10 max-w-3xl mx-auto"
-                >
-                    {[
-                        { label: 'Registered Karigars', value: '10K+', icon: Users, gradient: 'from-orange-500 to-amber-500' },
-                        { label: 'Happy Clients', value: '5K+', icon: Heart, gradient: 'from-rose-500 to-pink-500' },
-                        { label: 'Partner Shops', value: '500+', icon: Store, gradient: 'from-teal-500 to-emerald-500' },
-                        { label: 'Jobs Completed', value: '25K+', icon: CheckCircle, gradient: 'from-green-500 to-emerald-500' },
-                    ].map((stat, idx) => (
-                        <motion.div 
-                            key={idx}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: 0.3 + idx * 0.05 }}
-                            className="bg-white rounded-xl p-3 text-center shadow-sm border border-gray-100"
-                        >
-                            <div className={`w-8 h-8 rounded-lg bg-gradient-to-r ${stat.gradient} flex items-center justify-center mx-auto mb-1`}>
-                                <stat.icon size="14" className="text-white" />
-                            </div>
-                            <p className="text-lg font-bold text-gray-800">{stat.value}</p>
-                            <p className="text-[9px] text-gray-400 font-semibold">{stat.label}</p>
-                        </motion.div>
-                    ))}
-                </motion.div>
+
 
                 {/* Cards Grid */}
                 <motion.div 
@@ -239,43 +212,7 @@ const Register = () => {
                     })}
                 </motion.div>
 
-                {/* Trust Banner */}
-                <motion.div 
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.6 }}
-                    className="bg-gradient-to-r from-orange-50 to-amber-50 rounded-2xl p-5 mb-8 border border-orange-200"
-                >
-                    <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-orange-100 rounded-full">
-                                <Shield size="20" className="text-orange-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm font-bold text-gray-800">Trusted Platform</p>
-                                <p className="text-xs text-gray-500">All profiles are verified before activation</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-orange-100 rounded-full">
-                                <Handshake size="20" className="text-orange-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm font-bold text-gray-800">Secure Payments</p>
-                                <p className="text-xs text-gray-500">Safe and transparent transactions</p>
-                            </div>
-                        </div>
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-orange-100 rounded-full">
-                                <Target size="20" className="text-orange-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm font-bold text-gray-800">24/7 Support</p>
-                                <p className="text-xs text-gray-500">Dedicated customer service team</p>
-                            </div>
-                        </div>
-                    </div>
-                </motion.div>
+
 
                 {/* Login Link */}
                 <motion.div 

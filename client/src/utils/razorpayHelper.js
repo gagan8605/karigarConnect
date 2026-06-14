@@ -28,6 +28,7 @@ export const loadRazorpayScript = () => {
  * Initiate Razorpay payment
  */
 export const initiateRazorpayPayment = async (paymentData) => {
+    // eslint-disable-next-line no-useless-catch
     try {
         const hasRazorpay = typeof window !== 'undefined' && typeof window.Razorpay === 'function';
         if (!hasRazorpay) {
@@ -147,36 +148,24 @@ export const verifyCashOtpPayment = async ({ transactionId, otp }) => {
  * Fetch payment history
  */
 export const fetchPaymentHistory = async (limit = 10, skip = 0) => {
-    try {
-        const response = await API.get('/api/client/payment/razorpay/transactions', {
-            params: { limit, skip },
-        });
-        return response.data;
-    } catch (error) {
-        throw error;
-    }
+    const response = await API.get('/api/client/payment/razorpay/transactions', {
+        params: { limit, skip },
+    });
+    return response.data;
 };
 
 /**
  * Get single transaction details
  */
 export const getTransactionDetails = async (transactionId) => {
-    try {
-        const response = await API.get(`/api/client/payment/razorpay/transactions/${transactionId}`);
-        return response.data;
-    } catch (error) {
-        throw error;
-    }
+    const response = await API.get(`/api/client/payment/razorpay/transactions/${transactionId}`);
+    return response.data;
 };
 
 /**
  * Request refund
  */
 export const requestRefund = async (transactionId) => {
-    try {
-        const response = await API.post(`/api/client/payment/razorpay/refund/${transactionId}`);
-        return response.data;
-    } catch (error) {
-        throw error;
-    }
+    const response = await API.post(`/api/client/payment/razorpay/refund/${transactionId}`);
+    return response.data;
 };
