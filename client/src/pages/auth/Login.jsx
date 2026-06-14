@@ -121,13 +121,13 @@ const StandardForm = ({ role, gradient, onSuccess }) => {
         if (!mobile || mobile.length !== 10) return toast.error('Enter valid 10-digit mobile.');
         setLoading(true);
         try {
-            await api.sendOtp({ mobile });
+            await api.sendOtp({ mobile, type: 'login', role });
             setOtpSent(true);
             toast.success('OTP sent to your mobile!');
         } catch (e) {
             toast.error(e.response?.data?.message || 'Failed to send OTP.');
         } finally { setLoading(false); }
-    }, [mobile]);
+    }, [mobile, role]);
 
     const handleSubmit = useCallback(async (e) => {
         e.preventDefault();

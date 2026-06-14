@@ -9,8 +9,8 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const User = require('../models/userModel');
 const faceClient = require('../utils/faceServiceClient');
-const { sendOtpSms } = require('../utils/smsHelper');
-const { sendOtpEmail } = require('../utils/emailHelper');
+const { sendOtpSms, sendCustomSms } = require('../utils/smsHelper');
+const { sendOtpEmail, sendEmailMessage } = require('../utils/emailHelper');
 const { getOtpCooldownState, markOtpCooldown, formatOtpCooldownMessage } = require('../utils/otpCooldown');
 const { logAuditEvent } = require('../utils/auditLogger');
 const { getConfiguredAdminAccounts } = require('../utils/adminAccounts');
@@ -99,21 +99,42 @@ const safeGet = (files, field) => files?.[field]?.[0] ?? null;
 // ── OTP ───────────────────────────────────────────────────────────────────────
 exports.sendOtp = async (req, res) => {
     try {
-        const { mobile, email, type } = req.body;
+        const { mobile, email, type, role } = req.body;
         const identifier = mobile || email;
         if (!identifier) return res.status(400).json({ message: 'Mobile or email required.' });
+
+        const isLogin = type === 'login';
 
         // Check if user is already registered using both mobile and email if provided
         const query = { $or: [] };
         if (mobile) query.$or.push({ mobile });
         if (email) query.$or.push({ email });
         const existingUser = await User.findOne(query).select('role mobile email').lean();
-        if (existingUser) {
-            const matchedField = existingUser.mobile === mobile ? 'mobile number' : 'email';
-            return res.status(409).json({
-                message: `This ${matchedField} is already registered as a ${existingUser.role}. Please login instead.`,
-                alreadyRegistered: true
-            });
+
+        if (isLogin) {
+            // In a login flow, the user MUST be registered
+            if (!existingUser) {
+                return res.status(404).json({
+                    message: 'This mobile number is not registered. Please register first.',
+                    notRegistered: true
+                });
+            }
+            // If role is specified, verify role matches
+            if (role && existingUser.role !== role) {
+                return res.status(409).json({
+                    message: `This mobile number is registered as a ${existingUser.role}. Please login as ${existingUser.role} instead.`,
+                    roleMismatch: true
+                });
+            }
+        } else {
+            // In a registration flow, the user must NOT be registered
+            if (existingUser) {
+                const matchedField = existingUser.mobile === mobile ? 'mobile number' : 'email';
+                return res.status(409).json({
+                    message: `This ${matchedField} is already registered as a ${existingUser.role}. Please login instead.`,
+                    alreadyRegistered: true
+                });
+            }
         }
 
         // Each identifier (mobile/email) has its own 30-second cooldown
@@ -1089,10 +1110,40 @@ exports.forgotPassword = async (req, res) => {
         user.resetPasswordExpire = new Date(Date.now() + 30 * 60 * 1000);
         await user.save({ validateBeforeSave: false });
 
-        // In production: send reset link via SMS/Email
+        const resetUrl = `${req.headers.origin || 'http://localhost:5173'}/reset-password/${token}`;
+
+        if (email) {
+            const html = `
+                <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
+                    <h2 style="color: #ea580c; margin-bottom: 8px;">KarigarConnect Password Reset Request</h2>
+                    <p>You requested a password reset for your KarigarConnect account. Please click the button below to reset your password:</p>
+                    <div style="margin: 24px 0;">
+                        <a href="${resetUrl}" style="background-color: #ea580c; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Reset Password</a>
+                    </div>
+                    <p>If the button doesn't work, you can copy and paste this link into your browser:</p>
+                    <p><a href="${resetUrl}">${resetUrl}</a></p>
+                    <p>This link is valid for 30 minutes. If you did not request this, you can safely ignore this email.</p>
+                    <hr style="margin: 20px 0; border: none; border-top: 1px solid #ddd;" />
+                    <p style="font-size: 12px; color: #999;">Do not reply to this automated email.</p>
+                </div>
+            `;
+            await sendEmailMessage({
+                to: email,
+                subject: 'Reset Your KarigarConnect Password',
+                html,
+            });
+        }
+
+        if (mobile) {
+            await sendCustomSms(mobile, `Use this link to reset your KarigarConnect password: ${resetUrl}. Valid for 30 minutes.`);
+        }
+
         console.log(`[PasswordReset] Token for ${mobile || email}: ${token}`);
         return res.json({ message: 'Password reset instructions sent.', resetToken: token });
-    } catch { return res.status(500).json({ message: 'Failed.' }); }
+    } catch (err) {
+        console.error('[PasswordReset] Error:', err);
+        return res.status(500).json({ message: 'Failed to send password reset instructions.' });
+    }
 };
 
 exports.resetPassword = async (req, res) => {
